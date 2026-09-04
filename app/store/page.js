@@ -703,7 +703,7 @@ function MovsSheet({ recentSales, customers, profilesMap }) {
   );
 }
 
-function ProductSheet({ product, saveProduct, busy }) {
+function ProductSheet({ product, saveProduct, busy, supabase }) {
   const editing = !!product;
   const [name, setName] = useState(product?.name ?? '');
   const [emoji, setEmoji] = useState(product?.emoji ?? '');
@@ -711,11 +711,27 @@ function ProductSheet({ product, saveProduct, busy }) {
   const [price, setPrice] = useState(product ? String(product.sell_price) : '');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(product?.image_url ?? null);
+  const [priceLog, setPriceLog] = useState([]);
+
+  useEffect(() => {
+    if (!editing || !product?.id) return;
+    supabase.from('product_price_log').select('*')
+      .eq('product_id', product.id)
+      .order('created_at', { ascending: false })
+      .limit(8)
+      .then(({ data }) => setPriceLog(data ?? []));
+  }, [editing, product?.id]);
+
   const c = parseInt(cost, 10), v = parseInt(price, 10);
-  const margin = c > 0 && v > 0 ? (v > c ? `Ganas ${fmt(v - c)} por unidad · margen del ${Math.round(((v - c) / v) * 100)}%` : '⚠️ A ese precio no ganas nada') : (editing ? 'El stock se cambia con "Surtir"' : 'Escribe costo y precio para ver la ganancia');
+  const margin = c > 0 && v > 0
+    ? (v > c
+      ? `Ganas ${fmt(v - c)} por unidad · margen ${Math.round(((v - c) / v) * 100)}%`
+      : '⚠️ A ese precio no ganas nada')
+    : (editing ? 'El stock se cambia desde "Surtir"' : 'Escribe costo y precio para ver la ganancia');
+
   return (
     <>
-      <h3>{editing ? 'Editar — ' + product.name : 'Agregar producto'}</h3>
+      <h3>{editing ? '✏️ ' + product.name : 'Agregar producto'}</h3>
       <div className="photo-picker">
         <div className="photo-preview">
           {preview ? <img src={preview} alt="" /> : (emoji || '🛒')}
@@ -730,7 +746,7 @@ function ProductSheet({ product, saveProduct, busy }) {
               }} />
           </label>
           <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, marginTop: 4 }}>
-            La foto será el ícono del producto en toda la app. Sin foto, se usa el emoji.
+            Sin foto se usa el emoji como ícono.
           </div>
         </div>
       </div>
@@ -740,16 +756,47 @@ function ProductSheet({ product, saveProduct, busy }) {
         <div className="field" style={{ width: 76, marginBottom: 0 }}><label>Emoji</label>
           <input value={emoji} onChange={e => setEmoji(e.target.value)} placeholder="🍬" maxLength={4} style={{ textAlign: 'center' }} /></div>
       </div>
-      <div className="field"><label>¿Cuánto te costó cada unidad? (pesos)</label>
-        <input type="number" inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} placeholder="ej. 1200" /></div>
-      <div className="field"><label>¿A cuánto lo vas a vender? (pesos)</label>
-        <input type="number" inputMode="numeric" value={price} onChange={e => setPrice(e.target.value)} placeholder="ej. 2000" /></div>
-      <div className={'hint' + (c > 0 && v > 0 && v <= c ? ' warn' : '')}>{margin}</div>
-      <button className="btn-primary" style={{ marginTop: 10 }} disabled={busy} onClick={() => {
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>💰 Costo (lo que te cuesta)</label>
+          <input type="number" inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} placeholder="ej. 1200" />
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>🏷️ Precio de venta</label>
+          <input type="number" inputMode="numeric" value={price} onChange={e => setPrice(e.target.value)} placeholder="ej. 2000" />
+        </div>
+      </div>
+
+      {c > 0 && v > 0 && (
+        <div style={{ background: v > c ? '#ecfdf5' : '#fef2f2', border: `1px solid ${v > c ? '#6ee7b7' : '#fca5a5'}`, borderRadius: 10, padding: '10px 14px', marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: v > c ? 'var(--green)' : 'var(--red)' }}>{margin}</span>
+          {v > c && <span style={{ fontSize: 18 }}>📈</span>}
+        </div>
+      )}
+      {!(c > 0 && v > 0) && <div className="hint" style={{ marginTop: 8 }}>{margin}</div>}
+
+      <button className="btn-primary" style={{ marginTop: 14 }} disabled={busy} onClick={() => {
         if (!name.trim() || !c || c <= 0 || !v || v <= 0) return;
         saveProduct({ name: name.trim(), emoji: emoji.trim() || '🛒', cost: c, price: v, image_url: product?.image_url ?? null }, product?.id, file);
-      }}>{busy ? 'Guardando…' : 'Guardar producto'}</button>
-      {!editing && <div className="hint">Después de guardarlo, usa "Surtir" para cargar las unidades que llegaron</div>}
+      }}>{busy ? 'Guardando…' : editing ? 'Guardar cambios' : 'Agregar producto'}</button>
+
+      {!editing && <div className="hint" style={{ marginTop: 8 }}>Después de guardarlo, usa "Surtir" para cargar las unidades físicas</div>}
+
+      {editing && priceLog.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <strong style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.4px' }}>Historial de precios</strong>
+          {priceLog.map(l => (
+            <div key={l.id} className="dashed-line" style={{ fontSize: 11.5 }}>
+              <span style={{ color: 'var(--muted)' }}>{fmtDate(l.created_at)}</span>
+              <span>
+                {l.old_cost !== l.new_cost && <span>Costo {fmt(l.old_cost)} → <strong>{fmt(l.new_cost)}</strong> </span>}
+                {l.old_price !== l.new_price && <span>Venta {fmt(l.old_price)} → <strong>{fmt(l.new_price)}</strong></span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }

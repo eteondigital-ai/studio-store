@@ -164,17 +164,22 @@ nav.tabs button{
 nav.tabs button .ico{font-size:18px}
 nav.tabs button.on{color:var(--red)}
 
-/* ===== SHEETS / DRAWER ===== */
-.backdrop{position:absolute;inset:0;background:rgba(15,23,42,.5);z-index:40;backdrop-filter:blur(2px)}
+/* ===== SHEETS / MODAL (mobile + desktop) ===== */
+.backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:40;backdrop-filter:blur(3px)}
 .sheet{
-  position:absolute;left:0;right:0;bottom:0;z-index:50;
+  position:fixed;
+  left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  width:calc(100% - 32px);max-width:440px;
+  z-index:50;
   background:var(--paper);
-  border-top:1px solid var(--line);border-radius:22px 22px 0 0;
-  padding:16px 18px calc(24px + env(safe-area-inset-bottom));
-  max-height:86%;overflow-y:auto;
+  border:1px solid var(--line);border-radius:20px;
+  padding:20px 20px 24px;
+  max-height:88vh;overflow-y:auto;
+  box-shadow:0 20px 60px rgba(0,0,0,.18);
 }
 .sheet h3{font-size:16px;font-weight:800;margin-bottom:14px}
-.grabber{width:36px;height:4px;border-radius:99px;background:var(--line2);margin:0 auto 14px}
+.grabber{display:none}
 
 /* ===== CHIPS ===== */
 .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
@@ -354,19 +359,8 @@ nav.tabs button.on{color:var(--red)}
   /* HIDE mobile cart bar */
   .cart-bar{display:none}
 
-  /* SHEETS → centered modal */
-  .backdrop{position:fixed;inset:0;border-radius:0;z-index:40}
-  .sheet{
-    position:fixed;
-    left:50%;top:50%;
-    transform:translate(-50%,-50%);
-    bottom:auto;right:auto;
-    width:460px;border-radius:var(--radius);
-    border:1px solid var(--line);
-    box-shadow:var(--shadow-lg);
-    max-height:80vh;
-  }
-  .grabber{display:none}
+  /* SHEETS → already centered on both mobile and desktop */
+  .sheet{width:460px}
 
   /* ── DESKTOP CART PANEL (fixed right) ── */
   .desktop-cart{
