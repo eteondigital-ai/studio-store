@@ -211,12 +211,28 @@ export default function Store() {
   /* ---------- UI ---------- */
   const isSellingTab = tab === 'vender';
   const showDesktopCart = isSellingTab;
+  const initials = profile.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const tabLabels = { vender: 'Vender', fiados: 'Fiados', inventario: 'Inventario', caja: 'Caja', panel: 'Panel', notif: 'Alertas' };
 
   return (
     <>
       <header>
-        <span className="brand">Studio Store</span>
-        <button className="pill" onClick={logout}>{profile.name} · salir</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className="brand">Studio Store</span>
+          <span className="header-tab-label">{tabLabels[tab]}</span>
+        </div>
+        <div className="user-menu">
+          <div className="user-avatar">{initials}</div>
+          <div className="user-info">
+            <span className="user-name">{profile.name}</span>
+            <span className={'user-role' + (owner ? ' owner' : '')}>{owner ? 'Administrador' : 'Monitor'}</span>
+          </div>
+          <button className="logout-btn" onClick={logout} title="Cerrar sesión">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </div>
       </header>
 
       <main className={showDesktopCart ? 'with-cart' : ''}>
