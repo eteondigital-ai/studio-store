@@ -105,3 +105,13 @@ nav.tabs button.on{color:var(--red)}
 .login-box .brand{font-size:28px;text-align:center;display:block;margin-bottom:20px}
 
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+/* Parche quirúrgico Sprint A: usable en desktop mientras llega el layout de Sprint B (sidebar) */
+@media (min-width: 860px){
+  #app{max-width:900px;box-shadow:0 0 0 2px var(--ink)}
+  .product-grid{grid-template-columns:repeat(5,1fr)}
+  .kpi-grid{grid-template-columns:repeat(4,1fr)}
+  .cart-bar{max-width:420px;left:50%;right:auto;transform:translateX(-50%)}
+  .sheet{max-width:480px;left:50%;right:auto;transform:translateX(-50%);border-radius:22px}
+  nav.tabs{max-width:900px;left:50%;right:auto;transform:translateX(-50%)}
+}
