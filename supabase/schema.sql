@@ -276,7 +276,7 @@ create or replace function create_purchase(p_product uuid, p_units int, p_unit_c
 returns uuid language plpgsql security definer set search_path = public as $$
 declare prod record; v_id uuid;
 begin
-  perform assert_owner();
+  perform assert_user();
   select * into prod from products where id = p_product for update;
   if not found then raise exception 'Producto no existe'; end if;
   insert into purchases (product_id, units, unit_cost, supplier, note, created_by)
@@ -323,7 +323,7 @@ create or replace function close_register(p_counted int, p_note text default nul
 returns cash_closings language plpgsql security definer set search_path = public as $$
 declare v_expected int; v_start timestamptz; row cash_closings;
 begin
-  perform assert_user();
+  perform assert_owner();
   v_expected := expected_cash_now();
   select coalesce(max(created_at), now() - interval '100 years') into v_start from cash_closings;
   insert into cash_closings (period_start, expected_cash, counted_cash, note, created_by)

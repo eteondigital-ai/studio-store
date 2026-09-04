@@ -5,7 +5,6 @@ import { supabase } from '../../lib/supabase';
 
 const fmt = n => '$' + (n ?? 0).toLocaleString('es-CO');
 const fmtDate = d => new Date(d).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-const LOW = 5;
 
 async function resizeImage(file, max = 640) {
   const img = await new Promise((res, rej) => {
@@ -233,7 +232,7 @@ export default function Store() {
             <div className="product-grid">
               {products.map(p => (
                 <button key={p.id}
-                  className={'prod' + (p.stock === 0 ? ' out' : p.stock <= LOW ? ' low' : '')}
+                  className={'prod' + (p.stock === 0 ? ' out' : p.stock <= p.low_stock_threshold ? ' low' : '')}
                   onClick={() => addToCart(p)}>
                   {cart[p.id] ? <span className="qty-badge">{cart[p.id]}</span> : null}
                   <span className="p-stock">{p.stock === 0 ? 'agotado' : 'quedan ' + p.stock}</span>
@@ -307,10 +306,10 @@ export default function Store() {
                     {owner && <><br />costo {fmt(p.avg_cost)} · en stock {fmt(p.avg_cost * p.stock)} · margen {p.sell_price ? Math.round(((p.sell_price - p.avg_cost) / p.sell_price) * 100) : 0}%</>}
                   </small>
                 </div>
-                <div style={{ textAlign: 'right', fontWeight: 800, fontSize: 16, color: p.stock <= LOW ? 'var(--red)' : 'inherit' }}>
+                <div style={{ textAlign: 'right', fontWeight: 800, fontSize: 16, color: p.stock <= p.low_stock_threshold ? 'var(--red)' : 'inherit' }}>
                   {p.stock}<small style={{ display: 'block', fontSize: 9, color: 'var(--muted)' }}>en stock</small>
                 </div>
-                {owner && <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>}
+                <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>
               </div>
             ))}
             {owner && <button className="btn-dashed" onClick={() => setSheet({ kind: 'producto' })}>＋ Agregar producto</button>}
@@ -327,18 +326,18 @@ export default function Store() {
                 Transferencias de la semana: {fmt(week.transferIn)}
               </small>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11, marginBottom: 14 }}>
-              {owner && (
+            {owner && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11, marginBottom: 14 }}>
                 <button className="card" style={{ marginBottom: 0, textAlign: 'center', fontWeight: 800, fontSize: 13 }}
                   onClick={() => setSheet({ kind: 'gasto' })}>
                   <span style={{ fontSize: 22, display: 'block' }}>💸</span>Registrar gasto o retiro
                 </button>
-              )}
-              <button className="card" style={{ marginBottom: 0, textAlign: 'center', fontWeight: 800, fontSize: 13, gridColumn: owner ? 'auto' : '1 / -1' }}
-                onClick={() => setSheet({ kind: 'cierre' })}>
-                <span style={{ fontSize: 22, display: 'block' }}>🔒</span>Cerrar caja
-              </button>
-            </div>
+                <button className="card" style={{ marginBottom: 0, textAlign: 'center', fontWeight: 800, fontSize: 13 }}
+                  onClick={() => setSheet({ kind: 'cierre' })}>
+                  <span style={{ fontSize: 22, display: 'block' }}>🔒</span>Cerrar caja
+                </button>
+              </div>
+            )}
             <div className="card">
               <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Cierres anteriores</strong>
               {closings.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Aún no hay cierres.</div>}
@@ -354,7 +353,7 @@ export default function Store() {
           </section>
         )}
 
-        {tab === 'panel' && owner && (
+        {tab === 'panel' && (
           <section>
             <h2 className="screen-title">Esta semana</h2>
             <div className="kpi-grid">
@@ -388,7 +387,7 @@ export default function Store() {
             </div>
             <div className="card">
               <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Necesita atención</strong>
-              {products.filter(p => p.stock <= LOW).map(p => (
+              {products.filter(p => p.stock <= p.low_stock_threshold).map(p => (
                 <div key={p.id} className="dashed-line"><span>🔴 {p.emoji} {p.name}</span><span>{p.stock === 0 ? 'agotado' : 'quedan ' + p.stock}</span></div>
               ))}
               {customers.filter(c => c.balance / c.credit_limit >= 0.8).map(c => (
@@ -397,6 +396,37 @@ export default function Store() {
               {closings[0] && closings[0].difference !== 0 && (
                 <div className="dashed-line"><span>💵 Último cierre</span><span>diferencia de {fmt(Math.abs(closings[0].difference))}</span></div>
               )}
+            </div>
+          </section>
+        )}
+
+        {tab === 'notif' && (
+          <section>
+            <h2 className="screen-title">Alertas</h2>
+            <div className="card">
+              <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>📦 Stock bajo</strong>
+              {products.filter(p => p.stock <= p.low_stock_threshold).map(p => (
+                <div key={p.id} className="dashed-line"><span>🔴 {p.emoji} {p.name}</span><span>{p.stock === 0 ? 'agotado' : 'quedan ' + p.stock}</span></div>
+              ))}
+              {products.filter(p => p.stock <= p.low_stock_threshold).length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Todo el stock está bien.</div>}
+            </div>
+            <div className="card">
+              <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>🧾 Fiados cerca del límite</strong>
+              {customers.filter(c => c.credit_limit > 0 && c.balance / c.credit_limit >= 0.9).map(c => (
+                <div key={c.id} className="dashed-line"><span>{c.emoji} {c.name}</span><span>{Math.round((c.balance / c.credit_limit) * 100)}% del límite</span></div>
+              ))}
+              {customers.filter(c => c.credit_limit > 0 && c.balance / c.credit_limit >= 0.9).length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Nadie cerca del límite.</div>}
+            </div>
+            <div className="card">
+              <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>💵 Último cierre de caja</strong>
+              {closings[0] ? (
+                <div className="dashed-line">
+                  <span>{new Date(closings[0].created_at).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                  <span style={{ fontWeight: 800, color: closings[0].difference === 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {closings[0].difference === 0 ? 'Cuadró ✓' : (closings[0].difference > 0 ? 'Sobró ' : 'Faltó ') + fmt(Math.abs(closings[0].difference))}
+                  </span>
+                </div>
+              ) : <div className="hint" style={{ textAlign: 'left' }}>Aún no hay cierres.</div>}
             </div>
           </section>
         )}
@@ -415,7 +445,7 @@ export default function Store() {
 
       <nav className="tabs">
         {[['vender', '🛒', 'Vender'], ['fiados', '🧾', 'Fiados'], ['inventario', '📦', 'Inventario'], ['caja', '💵', 'Caja'],
-          ...(owner ? [['panel', '📊', 'Panel']] : [])].map(([id, ico, label]) => (
+          ['panel', '📊', 'Panel'], ['notif', '🔔', 'Alertas']].map(([id, ico, label]) => (
           <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
             <span className="ico">{ico}</span>{label}
           </button>
