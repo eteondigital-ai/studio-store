@@ -209,11 +209,19 @@ export default function Store() {
   if (!profile) return <div className="hint" style={{ margin: 'auto' }}>Cargando…</div>;
 
   /* ---------- UI ---------- */
+  const isSellingTab = tab === 'vender';
+
   return (
-    <>
+    <div className={isSellingTab && cartCount > 0 ? 'has-cart' : ''}>
       <header>
         <span className="brand">Studio Store</span>
-        <button className="pill" onClick={logout}>{profile.name} · salir</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'none' }}
+            id="desktop-tab-label">
+            {{'vender':'Vender','fiados':'Fiados','inventario':'Inventario','caja':'Caja','panel':'Panel','notif':'Alertas'}[tab]}
+          </span>
+          <button className="pill" onClick={logout}>{profile.name} · salir</button>
+        </div>
       </header>
 
       <main>
@@ -452,11 +460,52 @@ export default function Store() {
         ))}
       </nav>
 
+      {/* Desktop persistent cart panel */}
+      {isSellingTab && (
+        <div className="desktop-cart">
+          <div className="desktop-cart-title">🛒 Orden actual</div>
+          {cartCount === 0 ? (
+            <div className="desktop-cart-empty">
+              <span className="dce-ico">🛍️</span>
+              Toca un producto para agregar al carrito
+            </div>
+          ) : (
+            <>
+              <div className="desktop-cart-items">
+                {Object.entries(cart).map(([id, qty]) => {
+                  const p = products.find(x => x.id === id);
+                  return p ? (
+                    <div key={id} className="dci">
+                      <span className="dci-emoji">{p.image_url ? <img src={p.image_url} className="p-photo" style={{ width: 28, height: 28, margin: 0 }} alt="" /> : p.emoji}</span>
+                      <div className="dci-info">
+                        <span className="dci-name">{p.name}</span>
+                        <span className="dci-sub">{qty} × {fmt(p.sell_price)}</span>
+                      </div>
+                      <span className="dci-price">{fmt(p.sell_price * qty)}</span>
+                      <button className="dci-rm" onClick={() => setCart(c => { const n = { ...c }; if (n[id] > 1) n[id]--; else delete n[id]; return n; })}>−</button>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+              <div className="desktop-cart-divider" />
+              <div className="desktop-cart-total">
+                <div><small>Total a cobrar</small>{fmt(cartTotal)}</div>
+                <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>{cartCount} {cartCount === 1 ? 'item' : 'items'}</span>
+              </div>
+              <button className="desktop-cart-btn" onClick={() => setSheet({ kind: 'cobrar' })}>
+                Cobrar {fmt(cartTotal)}
+              </button>
+              <button className="desktop-cart-clear" onClick={() => setCart({})}>Vaciar carrito</button>
+            </>
+          )}
+        </div>
+      )}
+
       {sheet && <Sheets sheet={sheet} close={() => setSheet(null)} busy={busy}
         {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, profilesMap, confirmSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
 
       {toast && <div className={'toast' + (toast.warn ? ' warn' : '')}>{toast.msg}</div>}
-    </>
+    </div>
   );
 }
 
