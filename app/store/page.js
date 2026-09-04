@@ -210,21 +210,16 @@ export default function Store() {
 
   /* ---------- UI ---------- */
   const isSellingTab = tab === 'vender';
+  const showDesktopCart = isSellingTab;
 
   return (
-    <div className={isSellingTab && cartCount > 0 ? 'has-cart' : ''}>
+    <>
       <header>
         <span className="brand">Studio Store</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'none' }}
-            id="desktop-tab-label">
-            {{'vender':'Vender','fiados':'Fiados','inventario':'Inventario','caja':'Caja','panel':'Panel','notif':'Alertas'}[tab]}
-          </span>
-          <button className="pill" onClick={logout}>{profile.name} · salir</button>
-        </div>
+        <button className="pill" onClick={logout}>{profile.name} · salir</button>
       </header>
 
-      <main>
+      <main className={showDesktopCart ? 'with-cart' : ''}>
         {tab === 'vender' && (
           <section>
             <div className="today-strip">
@@ -505,7 +500,7 @@ export default function Store() {
         {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, profilesMap, confirmSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
 
       {toast && <div className={'toast' + (toast.warn ? ' warn' : '')}>{toast.msg}</div>}
-    </div>
+    </>
   );
 }
 
