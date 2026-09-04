@@ -195,6 +195,29 @@ nav.tabs button{
 nav.tabs button .ico{font-size:18px}
 nav.tabs button.on{color:var(--red)}
 
+/* ===== SUB-TABS ===== */
+.sub-tabs{
+  display:flex;gap:6px;margin-bottom:16px;
+  background:var(--bg);border:1.5px solid var(--line2);
+  border-radius:var(--radius-sm);padding:4px;
+}
+.sub-tabs button{
+  flex:1;padding:9px 12px;border-radius:8px;
+  font-size:12.5px;font-weight:700;color:var(--muted);
+  transition:background .12s,color .12s,box-shadow .12s;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.sub-tabs button.on{
+  background:var(--paper);color:var(--red);
+  box-shadow:var(--shadow);
+}
+.sub-tab-badge{
+  background:var(--red);color:#fff;
+  font-size:9px;font-weight:800;
+  border-radius:999px;padding:1px 6px;min-width:18px;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+
 /* ===== SHEETS / MODAL (mobile + desktop) ===== */
 .backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:40;backdrop-filter:blur(3px)}
 .sheet{

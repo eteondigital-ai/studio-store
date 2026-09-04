@@ -35,6 +35,7 @@ export default function Store() {
   const [profilesMap, setProfilesMap] = useState({});
   const [expectedCash, setExpectedCash] = useState(0);
   const [tab, setTab] = useState('vender');
+  const [clienteTab, setClienteTab] = useState('todos');
   const [cart, setCart] = useState({});
   const [sheet, setSheet] = useState(null); // {kind, data}
   const [toast, setToast] = useState(null);
@@ -212,7 +213,7 @@ export default function Store() {
   const isSellingTab = tab === 'vender';
   const showDesktopCart = isSellingTab;
   const initials = profile.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const tabLabels = { vender: 'Vender', fiados: 'Fiados', inventario: 'Inventario', caja: 'Caja', panel: 'Panel', notif: 'Alertas' };
+  const tabLabels = { vender: 'Vender', clientes: 'Clientes', inventario: 'Inventario', caja: 'Caja', panel: 'Panel', notif: 'Alertas' };
 
   return (
     <>
@@ -266,17 +267,32 @@ export default function Store() {
           </section>
         )}
 
-        {tab === 'fiados' && (
+        {tab === 'clientes' && (
           <section>
-            <h2 className="screen-title">Cuentas de fiados</h2>
-            <div className="card yellow-card row">
-              <div>
-                <small style={{ fontWeight: 700, fontSize: 11.5, color: '#7a6a1d' }}>Plata en la calle (por cobrar)</small>
-                <br /><strong style={{ fontSize: 23 }}>{fmt(street)}</strong>
-              </div>
-              <div style={{ fontSize: 32 }}>🧾</div>
+            <h2 className="screen-title">Clientes</h2>
+
+            {/* Sub-nav */}
+            <div className="sub-tabs">
+              <button className={clienteTab === 'todos' ? 'on' : ''} onClick={() => setClienteTab('todos')}>👥 Directorio</button>
+              <button className={clienteTab === 'fiados' ? 'on' : ''} onClick={() => setClienteTab('fiados')}>
+                🧾 Fiados
+                {customers.filter(c => c.balance > 0).length > 0 && (
+                  <span className="sub-tab-badge">{customers.filter(c => c.balance > 0).length}</span>
+                )}
+              </button>
             </div>
-            {customers.map(c => {
+
+            {clienteTab === 'fiados' && (
+              <div className="card yellow-card row">
+                <div>
+                  <small style={{ fontWeight: 700, fontSize: 11.5, color: '#7a6a1d' }}>Plata en la calle (por cobrar)</small>
+                  <br /><strong style={{ fontSize: 23 }}>{fmt(street)}</strong>
+                </div>
+                <div style={{ fontSize: 32 }}>🧾</div>
+              </div>
+            )}
+
+            {(clienteTab === 'todos' ? customers : customers.filter(c => c.balance > 0)).map(c => {
               const pct = Math.min(100, Math.round((c.balance / c.credit_limit) * 100));
               return (
                 <div key={c.id} className="card" style={{ cursor: 'pointer' }}
@@ -298,7 +314,14 @@ export default function Store() {
                 </div>
               );
             })}
-            {owner && <button className="btn-dashed" onClick={() => setSheet({ kind: 'cliente' })}>＋ Agregar persona</button>}
+
+            {clienteTab === 'fiados' && customers.filter(c => c.balance > 0).length === 0 && (
+              <div className="hint" style={{ marginTop: 24 }}>No hay fiados pendientes 🎉</div>
+            )}
+
+            {clienteTab === 'todos' && owner && (
+              <button className="btn-dashed" onClick={() => setSheet({ kind: 'cliente' })}>＋ Agregar persona</button>
+            )}
           </section>
         )}
 
@@ -463,7 +486,7 @@ export default function Store() {
       )}
 
       <nav className="tabs">
-        {[['vender', '🛒', 'Vender'], ['fiados', '🧾', 'Fiados'], ['inventario', '📦', 'Inventario'], ['caja', '💵', 'Caja'],
+        {[['vender', '🛒', 'Vender'], ['clientes', '👥', 'Clientes'], ['inventario', '📦', 'Inventario'], ['caja', '💵', 'Caja'],
           ['panel', '📊', 'Panel'], ['notif', '🔔', 'Alertas']].map(([id, ico, label]) => (
           <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
             <span className="ico">{ico}</span>{label}
