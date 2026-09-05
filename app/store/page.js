@@ -292,6 +292,10 @@ export default function Store() {
               </div>
             )}
 
+            {clienteTab === 'todos' && owner && (
+              <button className="btn-dashed" style={{ marginBottom: 14 }} onClick={() => setSheet({ kind: 'cliente' })}>＋ Agregar persona</button>
+            )}
+
             {(clienteTab === 'todos' ? customers : customers.filter(c => c.balance > 0)).map(c => {
               const pct = Math.min(100, Math.round((c.balance / c.credit_limit) * 100));
               return (
@@ -317,10 +321,6 @@ export default function Store() {
 
             {clienteTab === 'fiados' && customers.filter(c => c.balance > 0).length === 0 && (
               <div className="hint" style={{ marginTop: 24 }}>No hay fiados pendientes 🎉</div>
-            )}
-
-            {clienteTab === 'todos' && owner && (
-              <button className="btn-dashed" onClick={() => setSheet({ kind: 'cliente' })}>＋ Agregar persona</button>
             )}
           </section>
         )}
@@ -602,10 +602,16 @@ function ChargeSheet({ customers, cartTotal, confirmSale, busy, owner }) {
   );
 }
 
-function PersonSheet({ person, savePayment, busy, supabase }) {
+function PersonSheet({ person, savePayment, busy, supabase, owner, notify, load }) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [history, setHistory] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(person.name);
+  const [tag, setTag] = useState(person.tag ?? '');
+  const [emoji, setEmoji] = useState(person.emoji);
+  const [limit, setLimit] = useState(String(person.credit_limit));
+  const [savingEdit, setSavingEdit] = useState(false);
   const pct = Math.min(100, Math.round((person.balance / person.credit_limit) * 100));
 
   useEffect(() => {
@@ -622,10 +628,45 @@ function PersonSheet({ person, savePayment, busy, supabase }) {
     })();
   }, [person.id, supabase]);
 
+  async function saveEdit() {
+    const l = parseInt(limit, 10);
+    if (!name.trim() || !l || l < 0) return;
+    setSavingEdit(true);
+    const { error } = await supabase.from('customers')
+      .update({ name: name.trim(), tag: tag.trim(), emoji: emoji.trim() || '👤', credit_limit: l })
+      .eq('id', person.id);
+    setSavingEdit(false);
+    if (error) { notify(error.message, true); return; }
+    notify('Datos actualizados'); setEditing(false); load();
+  }
+
+  if (editing) {
+    return (
+      <>
+        <h3>✏️ Editar — {person.name}</h3>
+        <div className="row" style={{ gap: 10, marginBottom: 12, alignItems: 'flex-end' }}>
+          <div className="field" style={{ flex: 1, marginBottom: 0 }}><label>Nombre</label>
+            <input value={name} onChange={e => setName(e.target.value)} /></div>
+          <div className="field" style={{ width: 76, marginBottom: 0 }}><label>Emoji</label>
+            <input value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={4} style={{ textAlign: 'center' }} /></div>
+        </div>
+        <div className="field"><label>Rol o sala (opcional)</label>
+          <input value={tag} onChange={e => setTag(e.target.value)} placeholder="ej. Modelo · Sala 2" /></div>
+        <div className="field"><label>Límite de fiado (pesos)</label>
+          <input type="number" inputMode="numeric" value={limit} onChange={e => setLimit(e.target.value)} /></div>
+        <button className="btn-primary" disabled={savingEdit} onClick={saveEdit}>{savingEdit ? 'Guardando…' : 'Guardar cambios'}</button>
+        <button className="btn-dashed" style={{ marginTop: 10 }} onClick={() => setEditing(false)}>Cancelar</button>
+      </>
+    );
+  }
+
   return (
     <>
-      <h3>{person.emoji} {person.name}</h3>
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="row" style={{ marginBottom: 0 }}>
+        <h3 style={{ marginBottom: 0 }}>{person.emoji} {person.name}</h3>
+        {owner && <button className="btn-secondary" onClick={() => setEditing(true)}>✏️ Editar</button>}
+      </div>
+      <div className="card" style={{ marginBottom: 14, marginTop: 12 }}>
         <div className="row">
           <small style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 700 }}>Saldo actual</small>
           <strong style={{ color: 'var(--red)', fontSize: 18 }}>{fmt(person.balance)}</strong>
