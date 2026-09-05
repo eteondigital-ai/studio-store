@@ -14,7 +14,7 @@ const SORTS = [
 export default function Catalogo() {
   const [products, setProducts] = useState(null);
   const [search, setSearch]     = useState('');
-  const [onlyAvail, setOnlyAvail] = useState(false);
+  const [onlyAvail, setOnlyAvail] = useState(true);
   const [sort, setSort]           = useState('manual');
 
   useEffect(() => {
