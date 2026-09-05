@@ -272,6 +272,18 @@ nav.tabs button.on{color:var(--red)}
   transition:border-color .15s;
 }
 .field input:focus,.field select:focus{outline:none;border-color:var(--blue)}
+.search-input{
+  width:100%;background:var(--bg);border:1.5px solid var(--line2);
+  border-radius:var(--radius-sm);padding:11px 13px;
+  color:var(--ink);font-size:14px;font-weight:600;
+  transition:border-color .15s;
+}
+.search-input:focus{outline:none;border-color:var(--blue)}
+.drag-handle{
+  cursor:grab;font-size:18px;color:var(--muted);
+  padding:0 6px;flex-shrink:0;user-select:none;touch-action:none;
+}
+.drag-handle:active{cursor:grabbing}
 
 /* ===== BUTTONS ===== */
 .btn-primary{

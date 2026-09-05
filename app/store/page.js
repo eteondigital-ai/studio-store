@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 
@@ -40,8 +40,61 @@ export default function Store() {
   const [sheet, setSheet] = useState(null); // {kind, data}
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState('');
+  const [dragId, setDragId] = useState(null);
 
   const owner = profile?.role === 'owner';
+  const productsRef = useRef(products);
+  useEffect(() => { productsRef.current = products; }, [products]);
+  const rowRefs = useRef({});
+
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? products.filter(p => p.name.toLowerCase().includes(q)) : products;
+  }, [products, search]);
+  const canDrag = owner && !search.trim();
+
+  function reorder(fromId, overId) {
+    setProducts(prev => {
+      const from = prev.findIndex(p => p.id === fromId);
+      const to = prev.findIndex(p => p.id === overId);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const arr = [...prev];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      return arr;
+    });
+  }
+
+  const dragIdRef = useRef(null);
+
+  function handlePointerMove(e) {
+    const id = dragIdRef.current;
+    if (!id) return;
+    for (const [otherId, el] of Object.entries(rowRefs.current)) {
+      if (!el || otherId === id) continue;
+      const rect = el.getBoundingClientRect();
+      if (e.clientY >= rect.top && e.clientY <= rect.bottom) { reorder(id, otherId); break; }
+    }
+  }
+
+  async function handlePointerUp() {
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+    dragIdRef.current = null;
+    setDragId(null);
+    await Promise.all(productsRef.current.map((p, i) =>
+      supabase.from('products').update({ sort_order: i }).eq('id', p.id)));
+  }
+
+  function handlePointerDown(e, id) {
+    if (!canDrag) return;
+    e.preventDefault();
+    dragIdRef.current = id;
+    setDragId(id);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  }
 
   const notify = (msg, warn) => {
     setToast({ msg, warn });
@@ -57,7 +110,7 @@ export default function Store() {
 
     const [prof, prods, custs, tSales, wSales, wPays, cls, exp, recent, allProfs] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', session.user.id).single(),
-      supabase.from('products').select('*').eq('active', true).order('name'),
+      supabase.from('products').select('*').eq('active', true).order('sort_order'),
       supabase.from('customer_balances').select('*').neq('status', 'inactive').order('name'),
       supabase.from('sales').select('*').gte('created_at', startToday.toISOString()).eq('voided', false),
       supabase.from('sales').select('*').gte('created_at', weekAgo.toISOString()).eq('voided', false),
@@ -249,8 +302,10 @@ export default function Store() {
               onClick={() => setSheet({ kind: 'movs' })}>
               🕐 Ver movimientos recientes (fecha y hora)
             </button>
+            <input className="search-input" placeholder="🔍 Buscar producto…" value={search}
+              onChange={e => setSearch(e.target.value)} style={{ marginBottom: 12 }} />
             <div className="product-grid">
-              {products.map(p => (
+              {filteredProducts.map(p => (
                 <button key={p.id}
                   className={'prod' + (p.stock === 0 ? ' out' : p.stock <= p.low_stock_threshold ? ' low' : '')}
                   onClick={() => addToCart(p)}>
@@ -336,8 +391,17 @@ export default function Store() {
               </div>
             )}
             {owner && <button className="btn-dashed" style={{ marginBottom: 14 }} onClick={() => setSheet({ kind: 'producto' })}>＋ Agregar producto</button>}
-            {products.map(p => (
-              <div key={p.id} className="card row">
+            <input className="search-input" placeholder="🔍 Buscar producto…" value={search}
+              onChange={e => setSearch(e.target.value)} style={{ marginBottom: 12 }} />
+            {canDrag && filteredProducts.length > 1 && (
+              <div className="hint" style={{ textAlign: 'left', marginBottom: 8 }}>Mantén presionado ⠿ y arrastra para reordenar</div>
+            )}
+            {filteredProducts.map(p => (
+              <div key={p.id} ref={el => { rowRefs.current[p.id] = el; }}
+                className="card row" style={{ opacity: dragId === p.id ? 0.4 : 1 }}>
+                {canDrag && (
+                  <span className="drag-handle" onPointerDown={e => handlePointerDown(e, p.id)}>⠿</span>
+                )}
                 <div className="avatar" style={{ borderRadius: 12, overflow: 'hidden' }}>
                   {p.image_url ? <img src={p.image_url} alt="" /> : p.emoji}
                 </div>
@@ -355,6 +419,7 @@ export default function Store() {
                 <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>
               </div>
             ))}
+            {filteredProducts.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin resultados para "{search}"</div>}
           </section>
         )}
 

@@ -33,6 +33,7 @@ create table if not exists products (
   stock int not null default 0 check (stock >= 0),
   low_stock_threshold int not null default 5,
   active boolean not null default true,
+  sort_order int not null default 999999,
   created_at timestamptz not null default now()
 );
 
@@ -410,6 +411,33 @@ create policy "dueño crea productos" on products for insert with check (current
 create policy "dueño edita productos" on products for update using (current_role_ss() = 'owner');
 create policy "dueño crea clientes" on customers for insert with check (current_role_ss() = 'owner');
 create policy "dueño edita clientes" on customers for update using (current_role_ss() = 'owner');
+
+-- ---------- HISTORIAL DE CAMBIOS DE PRECIO/COSTO ----------
+create table if not exists product_price_log (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null references products(id),
+  old_cost int, new_cost int,
+  old_price int, new_price int,
+  created_at timestamptz not null default now()
+);
+alter table product_price_log enable row level security;
+create policy "owners see price log" on product_price_log for select
+  using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'owner'));
+
+create or replace function log_product_price_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if old.sell_price is distinct from new.sell_price
+     or old.avg_cost is distinct from new.avg_cost then
+    insert into product_price_log (product_id, old_cost, new_cost, old_price, new_price)
+    values (new.id, old.avg_cost, new.avg_cost, old.sell_price, new.sell_price);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_product_price_log on products;
+create trigger trg_product_price_log after update on products
+  for each row execute function log_product_price_change();
 
 -- ---------- STORAGE: fotos de productos ----------
 -- Bucket público para que las fotos carguen rápido en la app.
