@@ -41,6 +41,8 @@ export default function Store() {
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
+  const [stockFilter, setStockFilter] = useState('todos');
+  const [sortBy, setSortBy] = useState('manual');
   const [dragId, setDragId] = useState(null);
 
   const owner = profile?.role === 'owner';
@@ -52,7 +54,21 @@ export default function Store() {
     const q = search.trim().toLowerCase();
     return q ? products.filter(p => p.name.toLowerCase().includes(q)) : products;
   }, [products, search]);
-  const canDrag = owner && !search.trim();
+
+  const inventoryProducts = useMemo(() => {
+    let list = filteredProducts;
+    if (stockFilter === 'stock') list = list.filter(p => p.stock > p.low_stock_threshold);
+    else if (stockFilter === 'bajo') list = list.filter(p => p.stock > 0 && p.stock <= p.low_stock_threshold);
+    else if (stockFilter === 'agotado') list = list.filter(p => p.stock === 0);
+    if (sortBy === 'manual') return list;
+    const arr = [...list];
+    if (sortBy === 'nombre') arr.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortBy === 'precio') arr.sort((a, b) => a.sell_price - b.sell_price);
+    else if (sortBy === 'stock') arr.sort((a, b) => a.stock - b.stock);
+    return arr;
+  }, [filteredProducts, stockFilter, sortBy]);
+
+  const canDrag = owner && !search.trim() && stockFilter === 'todos' && sortBy === 'manual';
 
   function reorder(fromId, overId) {
     setProducts(prev => {
@@ -392,11 +408,22 @@ export default function Store() {
             )}
             {owner && <button className="btn-dashed" style={{ marginBottom: 14 }} onClick={() => setSheet({ kind: 'producto' })}>＋ Agregar producto</button>}
             <input className="search-input" placeholder="🔍 Buscar producto…" value={search}
-              onChange={e => setSearch(e.target.value)} style={{ marginBottom: 12 }} />
-            {canDrag && filteredProducts.length > 1 && (
+              onChange={e => setSearch(e.target.value)} style={{ marginBottom: 10 }} />
+            <div className="chip-row" style={{ marginBottom: 8 }}>
+              {[['todos', 'Todos'], ['stock', 'En stock'], ['bajo', 'Stock bajo'], ['agotado', 'Agotado']].map(([id, label]) => (
+                <button key={id} className={'chip' + (stockFilter === id ? ' on' : '')} onClick={() => setStockFilter(id)}>{label}</button>
+              ))}
+            </div>
+            <select className="search-input" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ marginBottom: 12 }}>
+              <option value="manual">Orden manual</option>
+              <option value="nombre">Ordenar por nombre</option>
+              <option value="precio">Ordenar por precio</option>
+              <option value="stock">Ordenar por stock</option>
+            </select>
+            {canDrag && inventoryProducts.length > 1 && (
               <div className="hint" style={{ textAlign: 'left', marginBottom: 8 }}>Mantén presionado ⠿ y arrastra para reordenar</div>
             )}
-            {filteredProducts.map(p => (
+            {inventoryProducts.map(p => (
               <div key={p.id} ref={el => { rowRefs.current[p.id] = el; }}
                 className="card row" style={{ opacity: dragId === p.id ? 0.4 : 1 }}>
                 {canDrag && (
@@ -419,7 +446,7 @@ export default function Store() {
                 <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>
               </div>
             ))}
-            {filteredProducts.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin resultados para "{search}"</div>}
+            {inventoryProducts.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin resultados</div>}
           </section>
         )}
 
