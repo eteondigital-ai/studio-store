@@ -11,11 +11,22 @@ const SORTS = [
   { id: 'precio-d',  label: 'Mayor precio', icon: '💰' },
 ];
 
+const SKELETON_COUNT = 8;
+
 export default function Catalogo() {
   const [products, setProducts] = useState(null);
   const [search, setSearch]     = useState('');
   const [onlyAvail, setOnlyAvail] = useState(true);
   const [sort, setSort]           = useState('manual');
+  const [scrolled, setScrolled]   = useState(false);
+
+  useEffect(() => {
+    const el = document.getElementById('app');
+    if (!el) return;
+    const onScroll = () => setScrolled(el.scrollTop > 280);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     supabase.from('public_catalog').select('*').order('sort_order')
@@ -54,7 +65,7 @@ export default function Catalogo() {
           <span className="cat-brand-icon">⚡</span>
           <div>
             <span className="cat-brand-name">Studio Store</span>
-            <span className="cat-brand-sub">GlamourCam</span>
+            <span className="cat-brand-sub">GlamourCam · Snacks &amp; bebidas para tu sesión</span>
           </div>
         </div>
         {products !== null && (
@@ -105,9 +116,16 @@ export default function Catalogo() {
       {/* ── Body ── */}
       <div className="cat-body">
         {products === null && (
-          <div className="cat-loading">
-            <div className="cat-spinner" />
-            <span>Cargando…</span>
+          <div className="cat-grid">
+            {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+              <div key={i} className="cat-skeleton-card">
+                <div className="cat-skeleton-img" />
+                <div className="cat-skeleton-info">
+                  <div className="cat-skeleton-line cat-skeleton-line--name" />
+                  <div className="cat-skeleton-line cat-skeleton-line--price" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -149,6 +167,16 @@ export default function Catalogo() {
       </div>
 
       <div className="cat-footer">⚡ Studio Store · GlamourCam Studio</div>
+
+      {scrolled && (
+        <button
+          className="cat-fab-top"
+          onClick={() => document.getElementById('app')?.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Volver arriba"
+        >
+          ↑
+        </button>
+      )}
     </div>
   );
 }
