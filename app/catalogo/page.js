@@ -125,7 +125,7 @@ export default function Catalogo() {
               {/* Image */}
               <div className="cat-img-wrap">
                 {p.image_url
-                  ? <img className="cat-img" src={p.image_url} alt={p.name} />
+                  ? <img className="cat-img" src={p.image_url} alt={p.name} loading="lazy" decoding="async" />
                   : <span className="cat-emoji">{p.emoji}</span>}
 
                 {/* Overlay badge */}

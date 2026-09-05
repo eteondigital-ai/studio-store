@@ -328,7 +328,7 @@ export default function Store() {
                   {cart[p.id] ? <span className="qty-badge">{cart[p.id]}</span> : null}
                   <span className="p-stock">{p.stock === 0 ? 'agotado' : 'quedan ' + p.stock}</span>
                   {p.image_url
-                    ? <img className="p-photo" src={p.image_url} alt="" />
+                    ? <img className="p-photo" src={p.image_url} alt="" loading="lazy" decoding="async" />
                     : <span className="emoji">{p.emoji}</span>}
                   <span className="p-name">{p.name}</span>
                   <span className="p-price">{fmt(p.sell_price)}</span>
