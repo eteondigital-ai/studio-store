@@ -335,6 +335,7 @@ export default function Store() {
                 <div><small style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700 }}>Utilidad esperada</small><br /><strong style={{ color: 'var(--green)' }}>{fmt(products.reduce((a, p) => a + (p.sell_price - p.avg_cost) * p.stock, 0))}</strong></div>
               </div>
             )}
+            {owner && <button className="btn-dashed" style={{ marginBottom: 14 }} onClick={() => setSheet({ kind: 'producto' })}>＋ Agregar producto</button>}
             {products.map(p => (
               <div key={p.id} className="card row">
                 <div className="avatar" style={{ borderRadius: 12, overflow: 'hidden' }}>
@@ -354,7 +355,6 @@ export default function Store() {
                 <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>
               </div>
             ))}
-            {owner && <button className="btn-dashed" onClick={() => setSheet({ kind: 'producto' })}>＋ Agregar producto</button>}
           </section>
         )}
 
