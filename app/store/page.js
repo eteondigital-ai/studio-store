@@ -225,6 +225,31 @@ export default function Store() {
     setSheet(null); notify('Abono guardado · ' + fmt(amount)); load();
   }
 
+  async function confirmSplitSale(customerId, upfrontAmount, upfrontMethod) {
+    if (busy) return; setBusy(true);
+    const items = Object.entries(cart).map(([product_id, qty]) => ({ product_id, qty }));
+    const { error: saleErr } = await supabase.rpc('create_sale', {
+      p_items: items, p_method: 'credit', p_customer: customerId,
+    });
+    if (saleErr) { setBusy(false); notify(saleErr.message, true); return; }
+    if (upfrontAmount > 0) {
+      const { error: payErr } = await supabase.rpc('create_payment', {
+        p_customer: customerId, p_amount: upfrontAmount, p_method: upfrontMethod,
+      });
+      if (payErr) {
+        setBusy(false);
+        notify('Venta guardada, pero no se pudo registrar el abono: ' + payErr.message, true);
+        load(); return;
+      }
+    }
+    setBusy(false);
+    setCart({}); setSheet(null);
+    const fiado = cartTotal - upfrontAmount;
+    const mLabel = upfrontMethod === 'cash' ? 'efectivo' : 'transfer.';
+    notify('Mixto · ' + fmt(upfrontAmount) + ' ' + mLabel + ' + ' + fmt(fiado) + ' fiado');
+    load();
+  }
+
   async function savePurchase(productId, units, unitCost) {
     if (busy) return; setBusy(true);
     const { error } = await supabase.rpc('create_purchase', { p_product: productId, p_units: units, p_unit_cost: unitCost });
@@ -659,7 +684,7 @@ export default function Store() {
       )}
 
       {sheet && <Sheets sheet={sheet} close={() => setSheet(null)} busy={busy}
-        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, profilesMap, confirmSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
+        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
 
       {toast && <div className={'toast' + (toast.warn ? ' warn' : '')}>{toast.msg}</div>}
     </>
@@ -694,16 +719,64 @@ function Sheets(props) {
   );
 }
 
-function ChargeSheet({ customers, cartTotal, confirmSale, busy, owner }) {
-  const [buyer, setBuyer] = useState(null); // null=nada, 'walkin', o customer
-  const person = buyer && buyer !== 'walkin' ? buyer : null;
-  const overLimit = person && person.balance + cartTotal > person.credit_limit;
+function ChargeSheet({ customers, cartTotal, confirmSale, confirmSplitSale, busy, owner }) {
+  const [buyer, setBuyer]             = useState(null);
+  const [mode, setMode]               = useState(null); // 'cash'|'transfer'|'credit'|'split'
+  const [upfrontMethod, setUpMethod]  = useState('cash');
+  const [upfrontRaw, setUpfrontRaw]   = useState('');
+
+  const person     = buyer && buyer !== 'walkin' ? buyer : null;
+  const upfront    = parseInt(upfrontRaw, 10) || 0;
+  const remaining  = cartTotal - upfront;
+  const overLimit  = person && person.balance + cartTotal > person.credit_limit;
+  const splitOverLimit = person && person.balance + remaining > person.credit_limit;
+  const canCredit  = person && !overLimit;
+  const canSplit   = person && upfront > 0 && upfront < cartTotal && !splitOverLimit;
+
+  function handleCharge() {
+    if (!mode || busy) return;
+    if (mode === 'split') {
+      if (canSplit) confirmSplitSale(person.id, upfront, upfrontMethod);
+    } else if (mode === 'credit') {
+      if (canCredit) confirmSale('credit', person.id);
+    } else {
+      confirmSale(mode, person?.id ?? null);
+    }
+  }
+
+  const modeHint = () => {
+    if (!buyer) return 'Elige un comprador para poder fiar o registrar a quién le vendiste';
+    if (buyer === 'walkin' && (mode === 'credit' || mode === 'split'))
+      return 'A clientes de paso no se les fía';
+    if (mode === 'credit' && overLimit)
+      return `${person.name} llegó al límite de fiado — debe abonar primero`;
+    if (mode === 'split') {
+      if (upfront <= 0) return 'Ingresa cuánto paga ahora';
+      if (upfront >= cartTotal) return 'El pago cubre el total — usa Efectivo o Transfer.';
+      if (splitOverLimit) return `${person.name} llegaría al límite con $${fmt(remaining)} de fiado`;
+      return `${person.name} paga ${fmt(upfront)} ahora y queda debiendo ${fmt(remaining)}`;
+    }
+    if (person) return `${person.name} debe ${fmt(person.balance)} · límite ${fmt(person.credit_limit)}`;
+    return null;
+  };
+
+  const hint = modeHint();
+  const isWarn = (mode === 'credit' && overLimit) || (mode === 'split' && splitOverLimit)
+    || (buyer === 'walkin' && (mode === 'credit' || mode === 'split'));
+
+  const readyToCharge = mode && !busy && (
+    mode === 'cash' || mode === 'transfer'
+    || (mode === 'credit' && canCredit)
+    || (mode === 'split' && canSplit)
+  );
+
   return (
     <>
       <h3>Cobrar {fmt(cartTotal)}</h3>
+
       <div className="field"><label>¿Quién compra?</label>
         <div className="chip-row">
-          <button className={'chip' + (buyer === 'walkin' ? ' on' : '')} onClick={() => setBuyer('walkin')}>👤 Cliente de paso</button>
+          <button className={'chip' + (buyer === 'walkin' ? ' on' : '')} onClick={() => setBuyer('walkin')}>👤 De paso</button>
           {customers.filter(c => c.status === 'active').map(c => (
             <button key={c.id}
               className={'chip' + (person?.id === c.id ? ' on' : '') + (c.balance + cartTotal > c.credit_limit ? ' blocked' : '')}
@@ -711,19 +784,47 @@ function ChargeSheet({ customers, cartTotal, confirmSale, busy, owner }) {
           ))}
         </div>
       </div>
-      <div className="pay-row">
-        <button className="pay-btn cash" disabled={busy} onClick={() => confirmSale('cash', person?.id ?? null)}>Efectivo</button>
-        <button className="pay-btn transfer" disabled={busy} onClick={() => confirmSale('transfer', person?.id ?? null)}>Transfer.</button>
-        <button className="pay-btn credit" disabled={busy || !person || overLimit} onClick={() => confirmSale('credit', person.id)}>Fiar</button>
+
+      <div className="field"><label>¿Cómo paga?</label>
+        <div className="pay-row">
+          <button className={'pay-btn cash'  + (mode === 'cash'     ? ' active' : '')} onClick={() => setMode('cash')}>💵 Efectivo</button>
+          <button className={'pay-btn transfer' + (mode === 'transfer' ? ' active' : '')} onClick={() => setMode('transfer')}>📲 Transfer.</button>
+          <button className={'pay-btn credit' + (mode === 'credit'  ? ' active' : '')}
+            disabled={!person} onClick={() => setMode('credit')}>🧾 Fiar</button>
+          <button className={'pay-btn split'  + (mode === 'split'   ? ' active' : '')}
+            disabled={!person} onClick={() => setMode('split')}>✂️ Mixto</button>
+        </div>
       </div>
-      <div className={'hint' + (overLimit ? ' warn' : '')}>
-        {!buyer ? 'Elige un comprador para poder fiar'
-          : buyer === 'walkin' ? 'A clientes de paso no se les fía'
-          : overLimit ? person.name + ' llegó al límite de fiado — debe abonar primero'
-          : person.name + ' debe ' + fmt(person.balance) + ' · límite ' + fmt(person.credit_limit)}
-      </div>
+
+      {mode === 'split' && (
+        <div className="split-block">
+          <div className="field" style={{ marginBottom: 8 }}>
+            <label>¿Cuánto paga ahora?</label>
+            <input type="number" inputMode="numeric" placeholder="0"
+              value={upfrontRaw} onChange={e => setUpfrontRaw(e.target.value)} autoFocus />
+          </div>
+          <div className="chip-row" style={{ marginBottom: 8 }}>
+            <button className={'chip' + (upfrontMethod === 'cash'     ? ' on' : '')} onClick={() => setUpMethod('cash')}>💵 Efectivo</button>
+            <button className={'chip' + (upfrontMethod === 'transfer' ? ' on' : '')} onClick={() => setUpMethod('transfer')}>📲 Transfer.</button>
+          </div>
+          {upfront > 0 && upfront < cartTotal && (
+            <div className="split-summary">
+              <div className="split-row"><span>Paga ahora</span><strong>{fmt(upfront)}</strong></div>
+              <div className="split-row fiado-row"><span>Queda fiado</span><strong>{fmt(remaining)}</strong></div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {hint && <div className={'hint' + (isWarn ? ' warn' : '')}>{hint}</div>}
+
+      <button className="btn-primary" style={{ marginTop: 12 }}
+        disabled={!readyToCharge} onClick={handleCharge}>
+        Cobrar {fmt(cartTotal)}
+      </button>
+
       {owner && (
-        <button className="btn-dashed" style={{ marginTop: 12 }} disabled={busy}
+        <button className="btn-dashed" style={{ marginTop: 10 }} disabled={busy}
           onClick={() => confirmSale('internal', null, 'internal')}>
           Registrar como consumo interno (a costo)
         </button>
