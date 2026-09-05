@@ -747,8 +747,17 @@ function PersonSheet({ person, savePayment, busy, supabase, owner, notify, load 
   useEffect(() => {
     (async () => {
       const [s, p] = await Promise.all([
-        supabase.from('sales').select('id,total,created_at,voided').eq('customer_id', person.id).eq('payment_method', 'credit').order('created_at', { ascending: false }).limit(15),
-        supabase.from('payments').select('id,amount,method,created_at,voided').eq('customer_id', person.id).order('created_at', { ascending: false }).limit(15),
+        supabase.from('sales')
+          .select('id,total,created_at,voided,sale_items(qty,unit_price,products(name,emoji))')
+          .eq('customer_id', person.id)
+          .eq('payment_method', 'credit')
+          .order('created_at', { ascending: false })
+          .limit(30),
+        supabase.from('payments')
+          .select('id,amount,method,created_at,voided')
+          .eq('customer_id', person.id)
+          .order('created_at', { ascending: false })
+          .limit(30),
       ]);
       const rows = [
         ...(s.data ?? []).map(x => ({ ...x, kind: 'credit', amt: x.total })),
@@ -826,14 +835,29 @@ function PersonSheet({ person, savePayment, busy, supabase, owner, notify, load 
         <strong style={{ fontSize: 12, color: 'var(--muted)' }}>Historial</strong>
         {history === null && <div className="hint" style={{ textAlign: 'left' }}>Cargando…</div>}
         {history?.map(h => (
-          <div key={h.kind + h.id} className="history-line" style={{ opacity: h.voided ? .45 : 1 }}>
-            <div>
-              <span style={{ fontWeight: 700, textDecoration: h.voided ? 'line-through' : 'none' }}>
-                {h.kind === 'pay' ? 'Abono · ' + (h.method === 'cash' ? 'efectivo' : 'transferencia') : 'Fiado'}
+          <div key={h.kind + h.id} className={'history-line' + (h.voided ? ' voided' : '')}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="h-top-row">
+                <span style={{ fontWeight: 700, textDecoration: h.voided ? 'line-through' : 'none' }}>
+                  {h.kind === 'pay' ? '💵 Abono · ' + (h.method === 'cash' ? 'efectivo' : 'transferencia') : '🧾 Fiado'}
+                </span>
+                <span className={'h-amt' + (h.kind === 'pay' ? ' pay' : '')}>{h.kind === 'pay' ? '−' : '+'}{fmt(h.amt)}</span>
+              </div>
+              <span className="h-when">
+                {new Date(h.created_at).toLocaleString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                {h.voided ? ' · anulado' : ''}
               </span>
-              <span className="h-when">{new Date(h.created_at).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}{h.voided ? ' · anulado' : ''}</span>
+              {h.kind === 'credit' && h.sale_items?.length > 0 && (
+                <div className="h-items">
+                  {h.sale_items.map((si, i) => (
+                    <span key={i} className="h-item">
+                      {si.products?.emoji} {si.products?.name} ×{si.qty}
+                      <span className="h-item-price">{fmt(si.unit_price * si.qty)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <span className={'h-amt' + (h.kind === 'pay' ? ' pay' : '')}>{h.kind === 'pay' ? '−' : '+'}{fmt(h.amt)}</span>
           </div>
         ))}
       </div>
