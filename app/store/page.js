@@ -496,6 +496,18 @@ export default function Store() {
               <div className="kpi"><small>En la calle</small><strong style={{ color: 'var(--red)' }}>{fmt(street)}</strong></div>
               <div className="kpi"><small>Valor inventario</small><strong>{fmt(invValue)}</strong></div>
             </div>
+            {owner && (
+              <div className="card row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ fontSize: 13, display: 'block' }}>🔗 Catálogo público</strong>
+                  <small style={{ color: 'var(--muted)', fontSize: 10.5, fontWeight: 600 }}>Compártelo con las clientas, no necesita cuenta</small>
+                </div>
+                <button className="btn-secondary" onClick={() => {
+                  navigator.clipboard.writeText(window.location.origin + '/catalogo');
+                  notify('Link copiado');
+                }}>Copiar link</button>
+              </div>
+            )}
             <div className="card">
               <strong style={{ fontSize: 13, display: 'block', marginBottom: 2 }}>¿Dónde está la plata?</strong>
               <div className="money-line"><span>💵 Caja física (esperado)</span><strong>{fmt(expectedCash)}</strong></div>

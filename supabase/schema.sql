@@ -456,6 +456,17 @@ create policy "duenio sube fotos" on storage.objects
 create policy "duenio actualiza fotos" on storage.objects
   for update using (bucket_id = 'product-photos' and current_role_ss() = 'owner');
 
+-- ---------- CATÁLOGO PÚBLICO (sin login, para compartir con clientas) ----------
+-- Vista sin RLS propia: solo expone columnas seguras (nunca costo/margen),
+-- así que el grant a anon no puede filtrar nada sensible aunque pidan otras columnas.
+create or replace view public_catalog as
+  select id, name, emoji, image_url, sell_price, (stock > 0) as disponible, sort_order
+  from products
+  where active = true
+  order by sort_order;
+
+grant select on public_catalog to anon, authenticated;
+
 -- ---------- SEED (productos y clientes de arranque; edítalos a gusto) ----------
 
 insert into products (name, emoji, sell_price, avg_cost, stock) values
