@@ -606,6 +606,25 @@ nav.tabs button.on{color:var(--red)}
   flex-shrink:0;margin:0 2px;
 }
 
+/* Category row — sits above sort row */
+.cat-pills-row--cats{margin-bottom:8px}
+.cat-pill--cat{
+  background:#1a2332;border-color:rgba(255,255,255,.12);
+  font-size:12px;padding:7px 14px;gap:6px;
+}
+.cat-pill--cat.on{
+  background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.6);
+  color:#a5b4fc;box-shadow:0 3px 12px rgba(99,102,241,.25);
+}
+.cat-pill-count{
+  background:rgba(255,255,255,.12);border-radius:99px;
+  font-size:10px;font-weight:800;padding:1px 6px;
+  color:rgba(255,255,255,.5);
+}
+.cat-pill--cat.on .cat-pill-count{
+  background:rgba(99,102,241,.3);color:#a5b4fc;
+}
+
 /* ── Body ── */
 .cat-body{padding:18px 14px 60px;max-width:980px;margin:0 auto}
 
