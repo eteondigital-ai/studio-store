@@ -546,6 +546,13 @@ export default function Store() {
 /* ================= hojas (bottom sheets) ================= */
 function Sheets(props) {
   const { sheet, close } = props;
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [close]);
+
   return (
     <>
       <div className="backdrop" onClick={close} />
