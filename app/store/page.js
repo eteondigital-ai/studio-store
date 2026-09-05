@@ -189,7 +189,16 @@ export default function Store() {
   const addToCart = p => {
     const q = cart[p.id] || 0;
     if (q >= p.stock) { notify('No hay más stock de ' + p.name, true); return; }
-    setCart({ ...cart, [p.id]: q + 1 });
+    setCart(c => ({ ...c, [p.id]: q + 1 }));
+  };
+
+  const removeFromCart = p => {
+    setCart(c => {
+      const n = { ...c };
+      if (n[p.id] > 1) n[p.id]--;
+      else delete n[p.id];
+      return n;
+    });
   };
 
   async function confirmSale(method, customerId, saleType = 'sale') {
@@ -321,19 +330,29 @@ export default function Store() {
             <input className="search-input" placeholder="🔍 Buscar producto…" value={search}
               onChange={e => setSearch(e.target.value)} style={{ marginBottom: 12 }} />
             <div className="product-grid">
-              {filteredProducts.map(p => (
-                <button key={p.id}
-                  className={'prod' + (p.stock === 0 ? ' out' : p.stock <= p.low_stock_threshold ? ' low' : '')}
-                  onClick={() => addToCart(p)}>
-                  {cart[p.id] ? <span className="qty-badge">{cart[p.id]}</span> : null}
-                  <span className="p-stock">{p.stock === 0 ? 'agotado' : 'quedan ' + p.stock}</span>
-                  {p.image_url
-                    ? <img className="p-photo" src={p.image_url} alt="" loading="lazy" decoding="async" />
-                    : <span className="emoji">{p.emoji}</span>}
-                  <span className="p-name">{p.name}</span>
-                  <span className="p-price">{fmt(p.sell_price)}</span>
-                </button>
-              ))}
+              {filteredProducts.map(p => {
+                const inCart = cart[p.id] || 0;
+                return (
+                  <div key={p.id}
+                    className={'prod' + (p.stock === 0 ? ' out' : p.stock <= p.low_stock_threshold ? ' low' : '') + (inCart ? ' in-cart' : '')}
+                    onClick={() => addToCart(p)}>
+                    <span className="p-stock">{p.stock === 0 ? 'agotado' : 'quedan ' + p.stock}</span>
+                    {p.image_url
+                      ? <img className="p-photo" src={p.image_url} alt="" loading="lazy" decoding="async" />
+                      : <span className="emoji">{p.emoji}</span>}
+                    <span className="p-name">{p.name}</span>
+                    {inCart ? (
+                      <div className="prod-qty-bar" onClick={e => e.stopPropagation()}>
+                        <button className="prod-qty-btn" onClick={() => removeFromCart(p)}>−</button>
+                        <span className="prod-qty-count">{inCart}</span>
+                        <button className="prod-qty-btn" onClick={() => addToCart(p)}>+</button>
+                      </div>
+                    ) : (
+                      <span className="p-price">{fmt(p.sell_price)}</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
