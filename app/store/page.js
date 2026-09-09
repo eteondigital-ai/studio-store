@@ -162,10 +162,19 @@ export default function Store() {
 
   /* ---------- derivados ---------- */
   const today = useMemo(() => {
+    const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
     const real = todaySales.filter(s => s.sale_type === 'sale');
     const sum = m => real.filter(s => s.payment_method === m).reduce((a, s) => a + s.total, 0);
-    return { sales: real.reduce((a, s) => a + s.total, 0), cash: sum('cash'), transfer: sum('transfer'), credit: sum('credit') };
-  }, [todaySales]);
+    // Abonos recibidos hoy — deben sumarse a efectivo/transfer del día
+    const tPays = weekPayments.filter(p => new Date(p.created_at) >= startToday);
+    const paySum = m => tPays.filter(p => p.method === m).reduce((a, p) => a + p.amount, 0);
+    return {
+      sales: real.reduce((a, s) => a + s.total, 0),
+      cash:     sum('cash')     + paySum('cash'),
+      transfer: sum('transfer') + paySum('transfer'),
+      credit:   sum('credit'),
+    };
+  }, [todaySales, weekPayments]);
 
   const week = useMemo(() => {
     const real = weekSales.filter(s => s.sale_type === 'sale');
@@ -684,7 +693,7 @@ export default function Store() {
       )}
 
       {sheet && <Sheets sheet={sheet} close={() => setSheet(null)} busy={busy}
-        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
+        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, weekPayments, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
 
       {toast && <div className={'toast' + (toast.warn ? ' warn' : '')}>{toast.msg}</div>}
     </>
@@ -1010,30 +1019,54 @@ function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
   );
 }
 
-function MovsSheet({ recentSales, customers, profilesMap }) {
+function MovsSheet({ recentSales, weekPayments, customers, profilesMap }) {
   const methodLbl = { cash: '💵 Efectivo', transfer: '📲 Transferencia', credit: '🧾 Fiado', internal: '🏠 Consumo interno' };
+
+  const movs = useMemo(() => {
+    const sales = recentSales.map(s => ({ ...s, _kind: 'sale' }));
+    const pays  = (weekPayments ?? []).map(p => ({ ...p, _kind: 'pay' }));
+    return [...sales, ...pays]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 40);
+  }, [recentSales, weekPayments]);
+
   return (
     <>
       <h3>Movimientos recientes</h3>
-      {recentSales.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Aún no hay ventas registradas.</div>}
-      {recentSales.map(s => {
-        const c = customers.find(x => x.id === s.customer_id);
-        return (
-          <div key={s.id} className="history-line" style={{ opacity: s.voided ? 0.45 : 1 }}>
-            <div>
-              <span style={{ fontWeight: 700, textDecoration: s.voided ? 'line-through' : 'none' }}>
-                {methodLbl[s.payment_method] || s.payment_method}
-                {c ? ' · ' + c.name : (s.payment_method !== 'internal' ? ' · Cliente de paso' : '')}
-              </span>
-              <span className="h-when">
-                {fmtDate(s.created_at)} · registró {profilesMap[s.created_by] || '—'}{s.voided ? ' · anulada' : ''}
-              </span>
+      {movs.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Aún no hay movimientos registrados.</div>}
+      {movs.map(m => {
+        const c = customers.find(x => x.id === m.customer_id);
+        if (m._kind === 'pay') {
+          return (
+            <div key={'pay-' + m.id} className="history-line" style={{ opacity: m.voided ? 0.45 : 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="h-top-row">
+                  <span style={{ fontWeight: 700, textDecoration: m.voided ? 'line-through' : 'none' }}>
+                    {m.method === 'cash' ? '💵' : '📲'} Abono{c ? ' · ' + c.name : ''}
+                  </span>
+                  <span className="h-amt pay">{fmt(m.amount)}</span>
+                </div>
+                <span className="h-when">{fmtDate(m.created_at)} · registró {profilesMap[m.created_by] || '—'}{m.voided ? ' · anulado' : ''}</span>
+              </div>
             </div>
-            <span className="h-amt" style={{ color: s.payment_method === 'credit' ? 'var(--red)' : 'var(--green)' }}>{fmt(s.total)}</span>
+          );
+        }
+        return (
+          <div key={'sale-' + m.id} className="history-line" style={{ opacity: m.voided ? 0.45 : 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="h-top-row">
+                <span style={{ fontWeight: 700, textDecoration: m.voided ? 'line-through' : 'none' }}>
+                  {methodLbl[m.payment_method] || m.payment_method}
+                  {c ? ' · ' + c.name : (m.payment_method !== 'internal' ? ' · Cliente de paso' : '')}
+                </span>
+                <span className="h-amt" style={{ color: m.payment_method === 'credit' ? 'var(--red)' : 'var(--green)' }}>{fmt(m.total)}</span>
+              </div>
+              <span className="h-when">{fmtDate(m.created_at)} · registró {profilesMap[m.created_by] || '—'}{m.voided ? ' · anulada' : ''}</span>
+            </div>
           </div>
         );
       })}
-      <div className="hint" style={{ marginTop: 10 }}>Se muestran las últimas 30 · cada registro guarda fecha, hora exacta y quién lo hizo</div>
+      <div className="hint" style={{ marginTop: 10 }}>Últimos 40 movimientos (ventas + abonos) · fecha y hora exactas</div>
     </>
   );
 }
