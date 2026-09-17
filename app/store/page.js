@@ -1010,13 +1010,52 @@ function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
   const total = (!isNaN(u) && !isNaN(c) && u > 0 && c >= 0) ? u * c : null;
   const selectedMethod = PURCHASE_METHODS.find(m => m.id === method);
 
+  // Price comparison vs last avg_cost
+  const prevCost = product.avg_cost;
+  const newCost = !isNaN(c) && c > 0 ? c : null;
+  const costDelta = newCost !== null && prevCost > 0 ? newCost - prevCost : null;
+  const costPct = costDelta !== null ? ((costDelta / prevCost) * 100).toFixed(1) : null;
+  const lastPurchaseCost = history?.find(h => !h.voided)?.unit_cost ?? null;
+
   return (
     <>
       <h3>Surtir — {product.name}</h3>
       <div className="field"><label>Unidades compradas</label>
         <input type="number" inputMode="numeric" placeholder="ej. 24" value={units} onChange={e => setUnits(e.target.value)} /></div>
-      <div className="field"><label>Costo por unidad (pesos)</label>
-        <input type="number" inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} /></div>
+      <div className="field">
+        <label>Costo por unidad (pesos)</label>
+        <input type="number" inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} />
+        {/* Price comparison indicator */}
+        {newCost !== null && costDelta !== null && costDelta !== 0 && (
+          <div style={{
+            marginTop: 6, padding: '6px 10px', borderRadius: 8, fontSize: 12,
+            background: costDelta > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
+            color: costDelta > 0 ? '#dc2626' : '#16a34a',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <span>{costDelta > 0 ? '📈 Más caro que antes' : '📉 Más barato que antes'}</span>
+            <span style={{ fontWeight: 700 }}>
+              {costDelta > 0 ? '+' : ''}{fmt(costDelta)} ({costDelta > 0 ? '+' : ''}{costPct}%)
+            </span>
+          </div>
+        )}
+        {newCost !== null && costDelta === 0 && (
+          <div style={{ marginTop: 6, padding: '5px 10px', borderRadius: 8, fontSize: 12,
+            background: 'rgba(99,102,241,0.08)', color: 'var(--muted)' }}>
+            ✓ Mismo costo que el promedio actual ({fmt(prevCost)})
+          </div>
+        )}
+        {lastPurchaseCost !== null && lastPurchaseCost !== prevCost && (
+          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)', paddingLeft: 2 }}>
+            Última compra registrada: {fmt(lastPurchaseCost)} · Costo promedio actual: {fmt(prevCost)}
+          </div>
+        )}
+        {lastPurchaseCost === null && prevCost > 0 && (
+          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)', paddingLeft: 2 }}>
+            Costo promedio en inventario: {fmt(prevCost)}
+          </div>
+        )}
+      </div>
 
       <div className="field">
         <label>¿Con qué se paga?</label>
