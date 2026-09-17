@@ -34,6 +34,7 @@ create table if not exists products (
   low_stock_threshold int not null default 5,
   active boolean not null default true,
   sort_order int not null default 999999,
+  category text not null default 'Otros',
   created_at timestamptz not null default now()
 );
 
@@ -460,7 +461,7 @@ create policy "duenio actualiza fotos" on storage.objects
 -- Vista sin RLS propia: solo expone columnas seguras (nunca costo/margen),
 -- así que el grant a anon no puede filtrar nada sensible aunque pidan otras columnas.
 create or replace view public_catalog as
-  select id, name, emoji, image_url, sell_price, (stock > 0) as disponible, sort_order
+  select id, name, emoji, image_url, sell_price, category, (stock > 0) as disponible, sort_order
   from products
   where active = true
   order by sort_order;
