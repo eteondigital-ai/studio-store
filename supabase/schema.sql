@@ -45,6 +45,7 @@ create table if not exists purchases (
   unit_cost int not null check (unit_cost >= 0),
   supplier text,
   note text,
+  payment_method text not null default 'transfer' check (payment_method in ('cash', 'transfer', 'owner_investment')),
   created_by uuid references profiles,
   created_at timestamptz not null default now(),
   voided boolean not null default false,
@@ -274,15 +275,40 @@ begin
   return v_id;
 end $$;
 
-create or replace function create_purchase(p_product uuid, p_units int, p_unit_cost int, p_supplier text default null, p_note text default null)
-returns uuid language plpgsql security definer set search_path = public as $$
-declare prod record; v_id uuid;
+create or replace function create_purchase(
+  p_product uuid,
+  p_units int,
+  p_unit_cost int,
+  p_supplier text default null,
+  p_note text default null,
+  p_method text default 'transfer'
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  prod record;
+  v_id uuid;
+  v_total int;
 begin
   perform assert_user();
+
+  if p_method not in ('cash', 'transfer', 'owner_investment') then
+    raise exception 'Método de pago inválido';
+  end if;
+
   select * into prod from products where id = p_product for update;
   if not found then raise exception 'Producto no existe'; end if;
-  insert into purchases (product_id, units, unit_cost, supplier, note, created_by)
-  values (p_product, p_units, p_unit_cost, p_supplier, p_note, auth.uid()) returning id into v_id;
+
+  v_total := p_units * p_unit_cost;
+
+  -- valida que haya efectivo suficiente si se paga desde caja
+  if p_method = 'cash' and v_total > expected_cash_now() then
+    raise exception 'No hay suficiente efectivo en caja (disponible: $%, necesario: $%)',
+      expected_cash_now(), v_total;
+  end if;
+
+  insert into purchases (product_id, units, unit_cost, supplier, note, payment_method, created_by)
+  values (p_product, p_units, p_unit_cost, p_supplier, p_note, p_method, auth.uid())
+  returning id into v_id;
+
   -- costo promedio ponderado
   update products set
     avg_cost = case when stock + p_units > 0
@@ -290,6 +316,19 @@ begin
       else p_unit_cost end,
     stock = stock + p_units
   where id = p_product;
+
+  -- descuenta de caja si se pagó en efectivo
+  if p_method = 'cash' then
+    insert into cash_movements (type, method, amount, note, created_by)
+    values (
+      'expense',
+      'cash',
+      v_total,
+      'Surtido: ' || prod.name || ' x' || p_units || ' u.',
+      auth.uid()
+    );
+  end if;
+
   return v_id;
 end $$;
 
