@@ -260,12 +260,15 @@ export default function Store() {
     load();
   }
 
-  async function savePurchase(productId, units, unitCost) {
+  async function savePurchase(productId, units, unitCost, method) {
     if (busy) return; setBusy(true);
-    const { error } = await supabase.rpc('create_purchase', { p_product: productId, p_units: units, p_unit_cost: unitCost });
+    const { error } = await supabase.rpc('create_purchase', {
+      p_product: productId, p_units: units, p_unit_cost: unitCost, p_method: method ?? 'transfer',
+    });
     setBusy(false);
     if (error) { notify(error.message, true); return; }
-    setSheet(null); notify(units + ' unidades sumadas'); load();
+    const methodLabel = method === 'cash' ? ' · descontado de caja' : method === 'owner_investment' ? ' · inversión dueño' : ' · transferencia';
+    setSheet(null); notify(units + ' unidades sumadas' + methodLabel); load();
   }
 
   async function saveProduct(data, editingId, imageFile) {
@@ -985,9 +988,16 @@ function PersonSheet({ person, savePayment, busy, supabase, owner, notify, load 
   );
 }
 
+const PURCHASE_METHODS = [
+  { id: 'cash',             label: '💵 Efectivo de caja',       hint: 'Descuenta automáticamente de la caja' },
+  { id: 'transfer',         label: '📲 Transferencia propia',    hint: 'Pago desde cuenta personal, no toca la caja' },
+  { id: 'owner_investment', label: '💼 Préstamo / inversión',    hint: 'Capital del dueño, queda registrado aparte' },
+];
+
 function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
   const [units, setUnits] = useState('');
   const [cost, setCost] = useState(String(product.avg_cost));
+  const [method, setMethod] = useState('cash');
   const [history, setHistory] = useState(null);
 
   useEffect(() => {
@@ -996,6 +1006,10 @@ function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
       .then(({ data }) => setHistory(data ?? []));
   }, [product.id, supabase]);
 
+  const u = parseInt(units, 10), c = parseInt(cost, 10);
+  const total = (!isNaN(u) && !isNaN(c) && u > 0 && c >= 0) ? u * c : null;
+  const selectedMethod = PURCHASE_METHODS.find(m => m.id === method);
+
   return (
     <>
       <h3>Surtir — {product.name}</h3>
@@ -1003,27 +1017,58 @@ function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
         <input type="number" inputMode="numeric" placeholder="ej. 24" value={units} onChange={e => setUnits(e.target.value)} /></div>
       <div className="field"><label>Costo por unidad (pesos)</label>
         <input type="number" inputMode="numeric" value={cost} onChange={e => setCost(e.target.value)} /></div>
-      <button className="btn-primary" disabled={busy} onClick={() => {
-        const u = parseInt(units, 10), c = parseInt(cost, 10);
+
+      <div className="field">
+        <label>¿Con qué se paga?</label>
+        <div className="chip-row" style={{ flexDirection: 'column', gap: 6 }}>
+          {PURCHASE_METHODS.map(m => (
+            <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+              background: method === m.id ? 'var(--accent-soft, rgba(99,102,241,0.12))' : 'var(--card)',
+              border: '1.5px solid ' + (method === m.id ? 'var(--accent, #6366f1)' : 'var(--border)'),
+              borderRadius: 10, padding: '8px 12px', transition: 'all .15s' }}>
+              <input type="radio" name="purchase_method" value={m.id}
+                checked={method === m.id} onChange={() => setMethod(m.id)}
+                style={{ accentColor: 'var(--accent, #6366f1)' }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{m.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.hint}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {total !== null && (
+        <div style={{ background: 'var(--accent-soft, rgba(99,102,241,0.1))', borderRadius: 10,
+          padding: '10px 14px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Total a pagar</span>
+          <span style={{ fontWeight: 700, fontSize: 16 }}>{fmt(total)}</span>
+        </div>
+      )}
+
+      <button className="btn-primary" disabled={busy || !total} onClick={() => {
         if (!u || u <= 0 || !c || c < 0) return;
-        savePurchase(product.id, u, c);
-      }}>Sumar al inventario</button>
+        savePurchase(product.id, u, c, method);
+      }}>Sumar al inventario · {selectedMethod?.label}</button>
       <div className="hint">El stock y el costo promedio se actualizan solos, y la compra queda registrada con fecha y hora</div>
       <div style={{ marginTop: 16 }}>
         <strong style={{ fontSize: 12, color: 'var(--muted)' }}>Últimos surtidos de este producto</strong>
         {history === null && <div className="hint" style={{ textAlign: 'left' }}>Cargando…</div>}
         {history?.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin compras registradas aún.</div>}
-        {history?.map(h => (
-          <div key={h.id} className="history-line" style={{ opacity: h.voided ? 0.45 : 1 }}>
-            <div>
-              <span style={{ fontWeight: 700, textDecoration: h.voided ? 'line-through' : 'none' }}>
-                {h.units} unidades a {fmt(h.unit_cost)} c/u
-              </span>
-              <span className="h-when">{fmtDate(h.created_at)} · registró {profilesMap[h.created_by] || '—'}{h.voided ? ' · anulada' : ''}</span>
+        {history?.map(h => {
+          const pm = h.payment_method === 'cash' ? '💵 Caja' : h.payment_method === 'owner_investment' ? '💼 Inversión' : '📲 Transf.';
+          return (
+            <div key={h.id} className="history-line" style={{ opacity: h.voided ? 0.45 : 1 }}>
+              <div>
+                <span style={{ fontWeight: 700, textDecoration: h.voided ? 'line-through' : 'none' }}>
+                  {h.units} u. a {fmt(h.unit_cost)} c/u · {pm}
+                </span>
+                <span className="h-when">{fmtDate(h.created_at)} · {profilesMap[h.created_by] || '—'}{h.voided ? ' · anulada' : ''}</span>
+              </div>
+              <span className="h-amt pay">{fmt(h.units * h.unit_cost)}</span>
             </div>
-            <span className="h-amt pay">{fmt(h.units * h.unit_cost)}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );
