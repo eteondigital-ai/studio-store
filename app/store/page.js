@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
+import { generateFiadoPdf } from '../../lib/generateFiadoPdf';
 
 const fmt = n => '$' + (n ?? 0).toLocaleString('es-CO');
 const fmtDate = d => new Date(d).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -942,7 +943,16 @@ function PersonSheet({ person, savePayment, busy, supabase, owner, notify, load 
           savePayment(person.id, Math.min(v, person.balance), method);
         }}>Guardar abono</button>
       <div style={{ marginTop: 16 }}>
-        <strong style={{ fontSize: 12, color: 'var(--muted)' }}>Historial</strong>
+        <div className="row" style={{ marginBottom: 4 }}>
+          <strong style={{ fontSize: 12, color: 'var(--muted)' }}>Historial</strong>
+          <button
+            className="btn-secondary"
+            style={{ fontSize: 12, padding: '6px 12px', marginBottom: 8 }}
+            onClick={() => generateFiadoPdf({ ...person, balance: person.balance }, history ?? [])}
+          >
+            📄 Exportar PDF
+          </button>
+        </div>
         {history === null && <div className="hint" style={{ textAlign: 'left' }}>Cargando…</div>}
         {history?.map(h => (
           <div key={h.kind + h.id} className={'history-line' + (h.voided ? ' voided' : '')}>
