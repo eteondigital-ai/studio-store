@@ -18,9 +18,9 @@ begin
     + coalesce((select sum(amount) from payments
         where method = 'transfer' and voided = false), 0)
     + coalesce((select sum(amount) from cash_movements
-        where method = 'transfer' and type = 'income' and voided = false), 0)
+        where method = 'transfer' and type = 'deposit' and voided = false), 0)
     - coalesce((select sum(amount) from cash_movements
-        where method = 'transfer' and type = 'expense' and voided = false), 0)
+        where method = 'transfer' and type in ('expense','withdrawal') and voided = false), 0)
   into v;
 
   return coalesce(v, 0);

@@ -1568,7 +1568,7 @@ function IncomeSheet({ saveCashMovement, busy }) {
         const v = parseInt(amount, 10);
         if (!v || v <= 0 || !note.trim()) return;
         // cash deposits must use type='deposit' to be counted by expected_cash_now()
-      saveCashMovement(method === 'cash' ? 'deposit' : 'income', v, note.trim(), method);
+      saveCashMovement('deposit', v, note.trim(), method);
       }}>Guardar ingreso</button>
     </>
   );
