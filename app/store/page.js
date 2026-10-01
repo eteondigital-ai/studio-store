@@ -36,6 +36,7 @@ export default function Store() {
   const [profilesMap, setProfilesMap] = useState({});
   const [expectedCash, setExpectedCash] = useState(0);
   const [bankBalance, setBankBalance] = useState(0);
+  const [manualMovs, setManualMovs] = useState([]);
   const [tab, setTab] = useState('vender');
   const [clienteTab, setClienteTab] = useState('todos');
   const [showInactive, setShowInactive] = useState(false);
@@ -128,7 +129,7 @@ export default function Store() {
     const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
     const weekAgo = new Date(Date.now() - 7 * 864e5);
 
-    const [prof, prods, custs, tSales, wSales, wPays, cls, exp, bank, recent, allProfs] = await Promise.all([
+    const [prof, prods, custs, tSales, wSales, wPays, cls, exp, bank, recent, allProfs, mMovs] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', session.user.id).single(),
       supabase.from('products').select('*').eq('active', true).order('sort_order'),
       supabase.from('customer_balances').select('*').neq('status', 'inactive').order('name'),
@@ -140,6 +141,7 @@ export default function Store() {
       supabase.rpc('bank_balance_now'),
       supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(30),
       supabase.from('profiles').select('id,name'),
+      supabase.from('cash_movements').select('*').order('created_at', { ascending: false }).limit(30),
     ]);
 
     if (!prof.data) { notify('Tu usuario no tiene perfil asignado', true); return; }
@@ -153,6 +155,7 @@ export default function Store() {
     setExpectedCash(exp.data ?? 0);
     setBankBalance(bank.data ?? 0);
     setRecentSales(recent.data ?? []);
+    setManualMovs(mMovs.data ?? []);
     const map = {};
     (allProfs.data ?? []).forEach(p => { map[p.id] = p.name; });
     setProfilesMap(map);
@@ -348,6 +351,14 @@ export default function Store() {
     if (error) { notify(error.message, true); return; }
     const label = type === 'expense' ? 'Gasto' : type === 'withdrawal' ? 'Retiro' : 'Ingreso';
     setSheet(null); notify(label + ' guardado · ' + fmt(amount)); load();
+  }
+
+  async function voidCashMovement(movId, reason) {
+    if (busy) return; setBusy(true);
+    const { error } = await supabase.rpc('void_cash_movement', { p_id: movId, p_reason: reason });
+    setBusy(false);
+    if (error) { notify(error.message, true); return; }
+    notify('Movimiento anulado'); load();
   }
 
   async function saveClosing(counted) {
@@ -616,6 +627,9 @@ export default function Store() {
                 </button>
               </div>
             )}
+            {owner && manualMovs.length > 0 && (
+              <ManualMovsCard manualMovs={manualMovs} voidCashMovement={voidCashMovement} profilesMap={profilesMap} />
+            )}
             <div className="card">
               <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Cierres anteriores</strong>
               {closings.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Aún no hay cierres.</div>}
@@ -819,7 +833,7 @@ export default function Store() {
       )}
 
       {sheet && <Sheets sheet={sheet} close={() => setSheet(null)} busy={busy}
-        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, weekPayments, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, saveAdjustment, voidPurchase, supabase, notify, load }} />}
+        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, weekPayments, manualMovs, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, voidCashMovement, saveClosing, saveAdjustment, voidPurchase, supabase, notify, load }} />}
 
       {toast && <div className={'toast' + (toast.warn ? ' warn' : '')}>{toast.msg}</div>}
     </>
@@ -1532,6 +1546,55 @@ function CustomerSheet({ supabase, notify, load, busy }) {
         notify(name + ' agregado'); load();
       }}>Guardar persona</button>
     </>
+  );
+}
+
+function ManualMovsCard({ manualMovs, voidCashMovement, profilesMap }) {
+  const [voidingId, setVoidingId] = useState(null);
+  const [reason, setReason] = useState('');
+  const typeLabel = { deposit: '💰 Ingreso', expense: '💸 Gasto', withdrawal: '🏧 Retiro' };
+  const methodLabel = { cash: '💵 Efectivo', transfer: '🏦 Banco' };
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>Movimientos manuales recientes</strong>
+      {manualMovs.map(m => (
+        <div key={m.id} className="history-line" style={{ opacity: m.voided ? 0.45 : 1, flexWrap: 'wrap', gap: 4 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="h-top-row">
+              <span style={{ fontWeight: 700, fontSize: 13, textDecoration: m.voided ? 'line-through' : 'none' }}>
+                {typeLabel[m.type] || m.type} · {methodLabel[m.method] || m.method}
+              </span>
+              <span className="h-amt" style={{ color: m.type === 'deposit' ? 'var(--green)' : 'var(--red)' }}>
+                {m.type === 'deposit' ? '+' : '-'}{fmt(m.amount)}
+              </span>
+            </div>
+            <span className="h-when">{m.note} · {fmtDate(m.created_at)}{m.voided ? ' · anulado' : ''}</span>
+          </div>
+          {!m.voided && (
+            voidingId === m.id ? (
+              <div style={{ width: '100%', display: 'flex', gap: 6, marginTop: 4 }}>
+                <input style={{ flex: 1, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)' }}
+                  placeholder="Motivo (ej. monto incorrecto)" value={reason} onChange={e => setReason(e.target.value)} />
+                <button style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--red)', color: '#fff', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                  onClick={() => { if (reason.trim()) { voidCashMovement(m.id, reason.trim()); setVoidingId(null); setReason(''); } }}>
+                  Anular
+                </button>
+                <button style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--border)', fontSize: 12, border: 'none', cursor: 'pointer' }}
+                  onClick={() => { setVoidingId(null); setReason(''); }}>
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'var(--border)', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontWeight: 700 }}
+                onClick={() => setVoidingId(m.id)}>
+                Corregir
+              </button>
+            )
+          )}
+        </div>
+      ))}
+      <div className="hint" style={{ marginTop: 6, textAlign: 'left' }}>Anula el movimiento incorrecto y vuelve a registrarlo con el monto correcto</div>
+    </div>
   );
 }
 
