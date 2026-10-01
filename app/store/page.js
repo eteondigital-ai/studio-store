@@ -37,6 +37,8 @@ export default function Store() {
   const [expectedCash, setExpectedCash] = useState(0);
   const [tab, setTab] = useState('vender');
   const [clienteTab, setClienteTab] = useState('todos');
+  const [showInactive, setShowInactive] = useState(false);
+  const [inactiveProducts, setInactiveProducts] = useState([]);
   const [cart, setCart] = useState({});
   const [sheet, setSheet] = useState(null); // {kind, data}
   const [toast, setToast] = useState(null);
@@ -269,6 +271,19 @@ export default function Store() {
     if (error) { notify(error.message, true); return; }
     const methodLabel = method === 'cash' ? ' · descontado de caja' : method === 'owner_investment' ? ' · inversión dueño' : ' · transferencia';
     setSheet(null); notify(units + ' unidades sumadas' + methodLabel); load();
+  }
+
+  async function toggleProductActive(productId, newActive) {
+    const { error } = await supabase.from('products').update({ active: newActive }).eq('id', productId);
+    if (error) { notify(error.message, true); return; }
+    notify(newActive ? 'Producto reactivado' : 'Producto inhabilitado');
+    load();
+    if (!newActive || showInactive) loadInactive();
+  }
+
+  async function loadInactive() {
+    const { data } = await supabase.from('products').select('*').eq('active', false).order('name');
+    setInactiveProducts(data ?? []);
   }
 
   async function saveAdjustment(productId, qtyDelta, reason, note) {
@@ -523,9 +538,40 @@ export default function Store() {
                 </div>
                 <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>
                 {owner && <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => setSheet({ kind: 'ajuste', data: p })}>⚖️ Ajustar</button>}
+                {owner && p.stock === 0 && (
+                  <button style={{ fontSize: 10, padding: '3px 7px', background: 'transparent',
+                    border: '1px solid var(--muted)', color: 'var(--muted)', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    onClick={() => toggleProductActive(p.id, false)}>Inhabilitar</button>
+                )}
               </div>
             ))}
             {inventoryProducts.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin resultados</div>}
+
+            {owner && (
+              <button className="btn-secondary" style={{ marginTop: 12, fontSize: 12, width: '100%' }}
+                onClick={() => { setShowInactive(v => !v); if (!showInactive) loadInactive(); }}>
+                {showInactive ? '▲ Ocultar inhabilitados' : '▼ Ver productos inhabilitados'}
+              </button>
+            )}
+            {showInactive && (
+              <div style={{ marginTop: 8 }}>
+                <strong style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Inhabilitados</strong>
+                {inactiveProducts.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin productos inhabilitados.</div>}
+                {inactiveProducts.map(p => (
+                  <div key={p.id} className="card row" style={{ opacity: 0.55 }}>
+                    <div className="avatar" style={{ borderRadius: 12, overflow: 'hidden', filter: 'grayscale(1)' }}>
+                      {p.image_url ? <img src={p.image_url} alt="" /> : p.emoji}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ fontSize: 13, display: 'block', textDecoration: 'line-through' }}>{p.name}</strong>
+                      <small style={{ color: 'var(--muted)', fontSize: 10.5 }}>Precio {fmt(p.sell_price)} · inhabilitado</small>
+                    </div>
+                    <button className="btn-secondary" style={{ fontSize: 11 }}
+                      onClick={() => toggleProductActive(p.id, true)}>Reactivar</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -610,6 +656,41 @@ export default function Store() {
               })}
               {Object.keys(week.units).length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Aún no hay ventas esta semana.</div>}
             </div>
+
+            {owner && Object.keys(week.units).length > 0 && (
+              <div className="card">
+                <strong style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>💰 Rentabilidad — esta semana</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '4px 10px',
+                  fontSize: 10.5, color: 'var(--muted)', fontWeight: 700, marginBottom: 4, paddingBottom: 4,
+                  borderBottom: '1px solid var(--border)' }}>
+                  <span>Producto</span><span style={{ textAlign: 'right' }}>Uds</span>
+                  <span style={{ textAlign: 'right' }}>Margen</span><span style={{ textAlign: 'right' }}>Ganancia</span>
+                </div>
+                {Object.entries(week.units)
+                  .map(([pid, units]) => {
+                    const p = products.find(x => x.id === pid);
+                    if (!p) return null;
+                    const margin = p.sell_price > 0 ? Math.round(((p.sell_price - p.avg_cost) / p.sell_price) * 100) : 0;
+                    const ganancia = units * (p.sell_price - p.avg_cost);
+                    return { pid, p, units, margin, ganancia };
+                  })
+                  .filter(Boolean)
+                  .sort((a, b) => b.ganancia - a.ganancia)
+                  .map(({ pid, p, units, margin, ganancia }) => (
+                    <div key={pid} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+                      gap: '4px 10px', fontSize: 12, padding: '5px 0',
+                      borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.emoji} {p.name}
+                      </span>
+                      <span style={{ textAlign: 'right', fontWeight: 700 }}>{units}</span>
+                      <span style={{ textAlign: 'right', color: margin >= 30 ? 'var(--green)' : margin >= 15 ? 'inherit' : 'var(--red)',
+                        fontWeight: 700 }}>{margin}%</span>
+                      <span style={{ textAlign: 'right', fontWeight: 800, color: 'var(--green)' }}>{fmt(ganancia)}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
             <div className="card">
               <strong style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Necesita atención</strong>
               {products.filter(p => p.stock <= p.low_stock_threshold).map(p => (
