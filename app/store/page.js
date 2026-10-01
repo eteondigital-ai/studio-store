@@ -35,6 +35,7 @@ export default function Store() {
   const [recentSales, setRecentSales] = useState([]);
   const [profilesMap, setProfilesMap] = useState({});
   const [expectedCash, setExpectedCash] = useState(0);
+  const [bankBalance, setBankBalance] = useState(0);
   const [tab, setTab] = useState('vender');
   const [clienteTab, setClienteTab] = useState('todos');
   const [showInactive, setShowInactive] = useState(false);
@@ -127,7 +128,7 @@ export default function Store() {
     const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
     const weekAgo = new Date(Date.now() - 7 * 864e5);
 
-    const [prof, prods, custs, tSales, wSales, wPays, cls, exp, recent, allProfs] = await Promise.all([
+    const [prof, prods, custs, tSales, wSales, wPays, cls, exp, bank, recent, allProfs] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', session.user.id).single(),
       supabase.from('products').select('*').eq('active', true).order('sort_order'),
       supabase.from('customer_balances').select('*').neq('status', 'inactive').order('name'),
@@ -136,6 +137,7 @@ export default function Store() {
       supabase.from('payments').select('*').gte('created_at', weekAgo.toISOString()).eq('voided', false),
       supabase.from('cash_closings').select('*').order('created_at', { ascending: false }).limit(10),
       supabase.rpc('expected_cash_now'),
+      supabase.rpc('bank_balance_now'),
       supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(30),
       supabase.from('profiles').select('id,name'),
     ]);
@@ -149,6 +151,7 @@ export default function Store() {
     setWeekPayments(wPays.data ?? []);
     setClosings(cls.data ?? []);
     setExpectedCash(exp.data ?? 0);
+    setBankBalance(bank.data ?? 0);
     setRecentSales(recent.data ?? []);
     const map = {};
     (allProfs.data ?? []).forEach(p => { map[p.id] = p.name; });
@@ -579,12 +582,23 @@ export default function Store() {
         {tab === 'caja' && (
           <section>
             <h2 className="screen-title">Caja</h2>
-            <div className="card green-card">
-              <small style={{ opacity: .85, fontSize: 11.5, fontWeight: 700 }}>Efectivo que debe haber en caja</small>
-              <strong style={{ fontSize: 26, display: 'block' }}>{fmt(expectedCash)}</strong>
-              <small style={{ opacity: .85, fontSize: 11.5, fontWeight: 700, display: 'block', marginTop: 6 }}>
-                Transferencias de la semana: {fmt(week.transferIn)}
-              </small>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11, marginBottom: 14 }}>
+              <div className="card green-card" style={{ marginBottom: 0 }}>
+                <small style={{ opacity: .85, fontSize: 11, fontWeight: 700, display: 'block' }}>💵 Efectivo en caja</small>
+                <strong style={{ fontSize: 22, display: 'block', marginTop: 2 }}>{fmt(expectedCash)}</strong>
+                <small style={{ opacity: .7, fontSize: 10.5, display: 'block', marginTop: 4 }}>billete físico</small>
+              </div>
+              <div className="card" style={{ marginBottom: 0, background: 'var(--blue,#2563eb)', color: '#fff' }}>
+                <small style={{ opacity: .9, fontSize: 11, fontWeight: 700, display: 'block' }}>🏦 Banco tienda</small>
+                <strong style={{ fontSize: 22, display: 'block', marginTop: 2 }}>{fmt(bankBalance)}</strong>
+                <small style={{ opacity: .75, fontSize: 10.5, display: 'block', marginTop: 4 }}>transferencias acum.</small>
+              </div>
+            </div>
+            <div className="card" style={{ marginBottom: 14, padding: '10px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--muted)' }}>Total tienda (caja + banco)</span>
+                <strong style={{ fontSize: 16 }}>{fmt(expectedCash + bankBalance)}</strong>
+              </div>
             </div>
             {owner && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 11, marginBottom: 14 }}>
