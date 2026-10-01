@@ -338,12 +338,13 @@ export default function Store() {
     load();
   }
 
-  async function saveCashMovement(type, amount, note) {
+  async function saveCashMovement(type, amount, note, method = 'cash') {
     if (busy) return; setBusy(true);
-    const { error } = await supabase.rpc('create_cash_movement', { p_type: type, p_method: 'cash', p_amount: amount, p_note: note });
+    const { error } = await supabase.rpc('create_cash_movement', { p_type: type, p_method: method, p_amount: amount, p_note: note });
     setBusy(false);
     if (error) { notify(error.message, true); return; }
-    setSheet(null); notify((type === 'expense' ? 'Gasto' : 'Retiro') + ' guardado · ' + fmt(amount)); load();
+    const label = type === 'expense' ? 'Gasto' : type === 'withdrawal' ? 'Retiro' : 'Ingreso';
+    setSheet(null); notify(label + ' guardado · ' + fmt(amount)); load();
   }
 
   async function saveClosing(counted) {
@@ -586,10 +587,14 @@ export default function Store() {
               </small>
             </div>
             {owner && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 11, marginBottom: 14 }}>
+                <button className="card" style={{ marginBottom: 0, textAlign: 'center', fontWeight: 800, fontSize: 13 }}
+                  onClick={() => setSheet({ kind: 'ingreso' })}>
+                  <span style={{ fontSize: 22, display: 'block' }}>💰</span>Registrar ingreso
+                </button>
                 <button className="card" style={{ marginBottom: 0, textAlign: 'center', fontWeight: 800, fontSize: 13 }}
                   onClick={() => setSheet({ kind: 'gasto' })}>
-                  <span style={{ fontSize: 22, display: 'block' }}>💸</span>Registrar gasto o retiro
+                  <span style={{ fontSize: 22, display: 'block' }}>💸</span>Gasto o retiro
                 </button>
                 <button className="card" style={{ marginBottom: 0, textAlign: 'center', fontWeight: 800, fontSize: 13 }}
                   onClick={() => setSheet({ kind: 'cierre' })}>
@@ -829,6 +834,7 @@ function Sheets(props) {
         {sheet.kind === 'ajuste' && <AdjustmentSheet {...props} product={sheet.data} />}
         {sheet.kind === 'producto' && <ProductSheet {...props} product={sheet.data} />}
         {sheet.kind === 'cliente' && <CustomerSheet {...props} />}
+        {sheet.kind === 'ingreso' && <IncomeSheet {...props} />}
         {sheet.kind === 'gasto' && <ExpenseSheet {...props} />}
         {sheet.kind === 'cierre' && <ClosingSheet {...props} />}
       </div>
@@ -1511,6 +1517,45 @@ function CustomerSheet({ supabase, notify, load, busy }) {
         if (error) { notify(error.message, true); return; }
         notify(name + ' agregado'); load();
       }}>Guardar persona</button>
+    </>
+  );
+}
+
+function IncomeSheet({ saveCashMovement, busy }) {
+  const [method, setMethod] = useState('transfer');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const METHODS = [
+    { id: 'transfer', label: '🏦 Banco tienda', hint: 'Transferencia recibida de clienta — suma al banco tienda' },
+    { id: 'cash',     label: '💵 Efectivo',     hint: 'Billete físico ingresado — suma a la caja física' },
+  ];
+  return (
+    <>
+      <h3>Registrar ingreso manual</h3>
+      <div className="hint" style={{ marginBottom: 12, textAlign: 'left' }}>
+        Usa esto cuando recibiste plata (efectivo o transferencia) pero no quedó registrado en una venta o abono.
+      </div>
+      <div className="field"><label>¿Cómo llegó el dinero?</label>
+        {METHODS.map(m => (
+          <button key={m.id} className={'chip' + (method === m.id ? ' on' : '')} style={{ marginRight: 6, marginBottom: 6 }}
+            onClick={() => setMethod(m.id)}>{m.label}</button>
+        ))}
+        <div className="hint" style={{ textAlign: 'left', marginTop: 4 }}>
+          {METHODS.find(m => m.id === method)?.hint}
+        </div>
+      </div>
+      <div className="field"><label>Monto (pesos)</label>
+        <input type="number" inputMode="numeric" placeholder="ej. 50000" value={amount} onChange={e => setAmount(e.target.value)} />
+      </div>
+      <div className="field"><label>¿De qué es este ingreso? (obligatorio)</label>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="ej. pago clienta Ana — fiado nov 15" />
+      </div>
+      <button className="btn-primary" disabled={busy} onClick={() => {
+        const v = parseInt(amount, 10);
+        if (!v || v <= 0 || !note.trim()) return;
+        // cash deposits must use type='deposit' to be counted by expected_cash_now()
+      saveCashMovement(method === 'cash' ? 'deposit' : 'income', v, note.trim(), method);
+      }}>Guardar ingreso</button>
     </>
   );
 }
