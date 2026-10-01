@@ -139,7 +139,7 @@ export default function Store() {
       supabase.from('cash_closings').select('*').order('created_at', { ascending: false }).limit(10),
       supabase.rpc('expected_cash_now'),
       supabase.rpc('bank_balance_now'),
-      supabase.from('sales').select('*').order('created_at', { ascending: false }).limit(30),
+      supabase.from('sales').select('*,sale_items(qty,unit_price,products(name,emoji))').order('created_at', { ascending: false }).limit(30),
       supabase.from('profiles').select('id,name'),
       supabase.from('cash_movements').select('*').order('created_at', { ascending: false }).limit(30),
     ]);
@@ -1412,6 +1412,16 @@ function MovsSheet({ recentSales, weekPayments, customers, profilesMap }) {
                 <span className="h-amt" style={{ color: m.payment_method === 'credit' ? 'var(--red)' : 'var(--green)' }}>{fmt(m.total)}</span>
               </div>
               <span className="h-when">{fmtDate(m.created_at)} · registró {profilesMap[m.created_by] || '—'}{m.voided ? ' · anulada' : ''}</span>
+              {m.sale_items?.length > 0 && (
+                <div className="h-items">
+                  {m.sale_items.map((si, i) => (
+                    <span key={i} className="h-item">
+                      {si.products?.emoji} {si.products?.name} ×{si.qty}
+                      <span className="h-item-price">{fmt(si.unit_price * si.qty)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         );
