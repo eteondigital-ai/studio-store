@@ -269,7 +269,7 @@ export default function Store() {
     });
     setBusy(false);
     if (error) { notify(error.message, true); return; }
-    const methodLabel = method === 'cash' ? ' · descontado de caja' : method === 'owner_investment' ? ' · inversión dueño' : ' · transferencia';
+    const methodLabel = method === 'cash' ? ' · descontado de caja' : method === 'owner_investment' ? ' · inversión dueño' : method === 'store_bank' ? ' · banco tienda' : ' · transferencia';
     setSheet(null); notify(units + ' unidades sumadas' + methodLabel); load();
   }
 
@@ -1093,8 +1093,9 @@ function PersonSheet({ person, savePayment, busy, supabase, owner, notify, load 
 }
 
 const PURCHASE_METHODS = [
-  { id: 'cash',             label: '💵 Efectivo de caja',       hint: 'Descuenta automáticamente de la caja' },
-  { id: 'transfer',         label: '📲 Transferencia propia',    hint: 'Pago desde cuenta personal, no toca la caja' },
+  { id: 'cash',             label: '💵 Efectivo de caja',       hint: 'Descuenta automáticamente de la caja física' },
+  { id: 'store_bank',       label: '🏦 Banco tienda',           hint: 'Plata de la tienda en cuenta bancaria (cobros de clientas por transferencia)' },
+  { id: 'transfer',         label: '📲 Transferencia propia',    hint: 'Pago desde cuenta personal del dueño, no toca la tienda' },
   { id: 'owner_investment', label: '💼 Préstamo / inversión',    hint: 'Capital del dueño, queda registrado aparte' },
 ];
 
@@ -1199,7 +1200,7 @@ function RestockSheet({ product, savePurchase, voidPurchase, busy, supabase, pro
         {history === null && <div className="hint" style={{ textAlign: 'left' }}>Cargando…</div>}
         {history?.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin compras registradas aún.</div>}
         {history?.map(h => {
-          const pm = h.payment_method === 'cash' ? '💵 Caja' : h.payment_method === 'owner_investment' ? '💼 Inversión' : '📲 Transf.';
+          const pm = h.payment_method === 'cash' ? '💵 Caja' : h.payment_method === 'owner_investment' ? '💼 Inversión' : h.payment_method === 'store_bank' ? '🏦 Banco tienda' : '📲 Transf. propia';
           return (
             <div key={h.id} className="history-line" style={{ opacity: h.voided ? 0.45 : 1, flexWrap: 'wrap', gap: 4 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
