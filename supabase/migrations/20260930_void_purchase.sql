@@ -30,10 +30,13 @@ begin
     update cash_movements
       set voided = true, void_reason = 'Anulación surtido ' || p_purchase,
           voided_by = auth.uid(), voided_at = now()
-      where type = 'expense' and method = 'cash'
-        and amount = pur.units * pur.unit_cost
-        and voided = false
-        and created_at between pur.created_at - interval '1 minute' and pur.created_at + interval '1 minute'
-      limit 1;
+      where id = (
+        select id from cash_movements
+        where type = 'expense' and method = 'cash'
+          and amount = pur.units * pur.unit_cost
+          and voided = false
+          and created_at between pur.created_at - interval '1 minute' and pur.created_at + interval '1 minute'
+        order by created_at limit 1
+      );
   end if;
 end $$;
