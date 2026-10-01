@@ -271,6 +271,27 @@ export default function Store() {
     setSheet(null); notify(units + ' unidades sumadas' + methodLabel); load();
   }
 
+  async function saveAdjustment(productId, qtyDelta, reason, note) {
+    if (busy) return; setBusy(true);
+    const { error } = await supabase.rpc('create_adjustment', {
+      p_product: productId, p_qty_delta: qtyDelta, p_reason: reason, p_note: note || null,
+    });
+    setBusy(false);
+    if (error) { notify(error.message, true); return; }
+    setSheet(null);
+    const labels = { count_correction: 'Corrección de conteo', gift: 'Cortesía/regalo', expired: 'Vencido', damaged: 'Dañado', other: 'Ajuste' };
+    notify(labels[reason] + ' · ' + (qtyDelta > 0 ? '+' : '') + qtyDelta + ' unidades');
+    load();
+  }
+
+  async function voidPurchase(purchaseId, reason) {
+    if (busy) return; setBusy(true);
+    const { error } = await supabase.rpc('void_purchase', { p_purchase: purchaseId, p_reason: reason });
+    setBusy(false);
+    if (error) { notify(error.message, true); return; }
+    notify('Surtido anulado — stock revertido'); load();
+  }
+
   async function saveProduct(data, editingId, imageFile) {
     if (busy) return; setBusy(true);
     let image_url = data.image_url ?? null;
@@ -501,6 +522,7 @@ export default function Store() {
                   {p.stock}<small style={{ display: 'block', fontSize: 9, color: 'var(--muted)' }}>en stock</small>
                 </div>
                 <button className="btn-secondary" onClick={() => setSheet({ kind: 'surtir', data: p })}>Surtir</button>
+                {owner && <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => setSheet({ kind: 'ajuste', data: p })}>⚖️ Ajustar</button>}
               </div>
             ))}
             {inventoryProducts.length === 0 && <div className="hint" style={{ textAlign: 'left' }}>Sin resultados</div>}
@@ -697,7 +719,7 @@ export default function Store() {
       )}
 
       {sheet && <Sheets sheet={sheet} close={() => setSheet(null)} busy={busy}
-        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, weekPayments, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, supabase, notify, load }} />}
+        {...{ products, customers, cart, cartTotal, expectedCash, owner, recentSales, weekPayments, profilesMap, confirmSale, confirmSplitSale, savePayment, savePurchase, saveProduct, saveCashMovement, saveClosing, saveAdjustment, voidPurchase, supabase, notify, load }} />}
 
       {toast && <div className={'toast' + (toast.warn ? ' warn' : '')}>{toast.msg}</div>}
     </>
@@ -723,6 +745,7 @@ function Sheets(props) {
         {sheet.kind === 'movs' && <MovsSheet {...props} />}
         {sheet.kind === 'persona' && <PersonSheet {...props} person={sheet.data} />}
         {sheet.kind === 'surtir' && <RestockSheet {...props} product={sheet.data} />}
+        {sheet.kind === 'ajuste' && <AdjustmentSheet {...props} product={sheet.data} />}
         {sheet.kind === 'producto' && <ProductSheet {...props} product={sheet.data} />}
         {sheet.kind === 'cliente' && <CustomerSheet {...props} />}
         {sheet.kind === 'gasto' && <ExpenseSheet {...props} />}
@@ -994,7 +1017,7 @@ const PURCHASE_METHODS = [
   { id: 'owner_investment', label: '💼 Préstamo / inversión',    hint: 'Capital del dueño, queda registrado aparte' },
 ];
 
-function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
+function RestockSheet({ product, savePurchase, voidPurchase, busy, supabase, profilesMap }) {
   const [units, setUnits] = useState('');
   const [cost, setCost] = useState(String(product.avg_cost));
   const [method, setMethod] = useState('cash');
@@ -1097,18 +1120,135 @@ function RestockSheet({ product, savePurchase, busy, supabase, profilesMap }) {
         {history?.map(h => {
           const pm = h.payment_method === 'cash' ? '💵 Caja' : h.payment_method === 'owner_investment' ? '💼 Inversión' : '📲 Transf.';
           return (
-            <div key={h.id} className="history-line" style={{ opacity: h.voided ? 0.45 : 1 }}>
-              <div>
+            <div key={h.id} className="history-line" style={{ opacity: h.voided ? 0.45 : 1, flexWrap: 'wrap', gap: 4 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontWeight: 700, textDecoration: h.voided ? 'line-through' : 'none' }}>
                   {h.units} u. a {fmt(h.unit_cost)} c/u · {pm}
                 </span>
                 <span className="h-when">{fmtDate(h.created_at)} · {profilesMap[h.created_by] || '—'}{h.voided ? ' · anulada' : ''}</span>
               </div>
               <span className="h-amt pay">{fmt(h.units * h.unit_cost)}</span>
+              {!h.voided && (
+                <VoidPurchaseBtn purchaseId={h.id} voidPurchase={voidPurchase}
+                  onDone={() => supabase.from('purchases').select('*').eq('product_id', product.id)
+                    .order('created_at', { ascending: false }).limit(10)
+                    .then(({ data }) => setHistory(data ?? []))} />
+              )}
             </div>
           );
         })}
       </div>
+    </>
+  );
+}
+
+function VoidPurchaseBtn({ purchaseId, voidPurchase, onDone }) {
+  const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState('');
+  if (!confirming) return (
+    <button style={{ fontSize: 10, padding: '2px 7px', background: 'transparent',
+      border: '1px solid var(--red,#ef4444)', color: 'var(--red,#ef4444)', borderRadius: 6, cursor: 'pointer' }}
+      onClick={() => setConfirming(true)}>Anular</button>
+  );
+  return (
+    <div style={{ width: '100%', display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+      <input style={{ flex: 1, fontSize: 12, padding: '4px 8px', borderRadius: 6,
+        border: '1px solid var(--border)', background: 'var(--bg)' }}
+        placeholder="Motivo (ej. cantidad incorrecta)" value={reason}
+        onChange={e => setReason(e.target.value)} autoFocus />
+      <button style={{ fontSize: 11, padding: '4px 10px', background: 'var(--red,#ef4444)',
+        color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+        disabled={!reason.trim()}
+        onClick={async () => { await voidPurchase(purchaseId, reason); onDone(); }}>Confirmar</button>
+      <button style={{ fontSize: 11, padding: '4px 8px', background: 'transparent',
+        border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+        onClick={() => setConfirming(false)}>Cancelar</button>
+    </div>
+  );
+}
+
+const ADJUST_REASONS = [
+  { id: 'count_correction', label: '🔢 Corrección de conteo', hint: 'Corregir error al surtir o contar' },
+  { id: 'gift',             label: '🎁 Cortesía / regalo',    hint: 'Sale del inventario sin generar ingreso' },
+  { id: 'expired',          label: '⏰ Vencido',               hint: 'Producto vencido, baja del inventario' },
+  { id: 'damaged',          label: '💔 Dañado',                hint: 'Producto dañado o en mal estado' },
+  { id: 'other',            label: '📝 Otro motivo',           hint: 'Ajuste manual con nota explicativa' },
+];
+
+function AdjustmentSheet({ product, saveAdjustment, busy }) {
+  const [reason, setReason] = useState('count_correction');
+  const [delta, setDelta] = useState('');
+  const [note, setNote] = useState('');
+  const selected = ADJUST_REASONS.find(r => r.id === reason);
+  const d = parseInt(delta, 10);
+  const isValid = !isNaN(d) && d !== 0 && reason;
+
+  return (
+    <>
+      <h3>⚖️ Ajustar inventario — {product.name}</h3>
+      <div style={{ background: 'var(--card)', borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+        display: 'flex', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, color: 'var(--muted)' }}>Stock actual</span>
+        <span style={{ fontWeight: 700, fontSize: 16 }}>{product.stock} unidades</span>
+      </div>
+
+      <div className="field">
+        <label>Motivo del ajuste</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ADJUST_REASONS.map(r => (
+            <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+              background: reason === r.id ? 'var(--accent-soft, rgba(99,102,241,0.12))' : 'var(--card)',
+              border: '1.5px solid ' + (reason === r.id ? 'var(--accent,#6366f1)' : 'var(--border)'),
+              borderRadius: 10, padding: '8px 12px', transition: 'all .15s' }}>
+              <input type="radio" name="adj_reason" value={r.id} checked={reason === r.id}
+                onChange={() => setReason(r.id)} style={{ accentColor: 'var(--accent,#6366f1)' }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{r.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.hint}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Cantidad a {reason === 'count_correction' ? 'ajustar' : 'retirar'}</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {reason !== 'count_correction' ? (
+            <input type="number" inputMode="numeric" min="1" max={product.stock}
+              placeholder={'Ej. 1 (máx ' + product.stock + ')'}
+              value={delta.replace('-', '')}
+              onChange={e => setDelta(e.target.value ? '-' + Math.abs(parseInt(e.target.value, 10) || 0) : '')}
+              style={{ flex: 1 }} />
+          ) : (
+            <input type="number" inputMode="numeric"
+              placeholder="Ej. -12 (quitar) o +5 (agregar)"
+              value={delta}
+              onChange={e => setDelta(e.target.value)}
+              style={{ flex: 1 }} />
+          )}
+        </div>
+        {isValid && (
+          <div style={{ marginTop: 6, padding: '5px 10px', borderRadius: 8, fontSize: 12,
+            background: d < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
+            color: d < 0 ? '#dc2626' : '#16a34a' }}>
+            Stock quedará en <strong>{product.stock + d} unidades</strong>
+          </div>
+        )}
+      </div>
+
+      <div className="field">
+        <label>Nota {reason === 'other' ? '(obligatoria)' : '(opcional)'}</label>
+        <input placeholder={reason === 'gift' ? 'Ej. cortesía para clienta sin registrar' : 'Describe el ajuste'}
+          value={note} onChange={e => setNote(e.target.value)} />
+      </div>
+
+      <button className="btn-primary" disabled={busy || !isValid || (reason === 'other' && !note.trim())}
+        style={{ background: d < 0 ? 'var(--red,#ef4444)' : undefined }}
+        onClick={() => saveAdjustment(product.id, d, reason, note)}>
+        {d < 0 ? '↓ Reducir ' + Math.abs(d) + ' unidades' : '↑ Agregar ' + d + ' unidades'} · {selected?.label}
+      </button>
+      <div className="hint">Este ajuste queda registrado con fecha, hora y tu usuario. No afecta ventas ni caja.</div>
     </>
   );
 }
