@@ -1647,29 +1647,64 @@ function IncomeSheet({ saveCashMovement, busy }) {
   );
 }
 
+const EXPENSE_CATS = [
+  { id: '',                  label: '— Sin categoría' },
+  { id: '📦 Suministros',   label: '📦 Suministros de tienda (bolsas, saco, soga, etc.)' },
+  { id: '🛒 Mercancía',     label: '🛒 Mercancía / inventario (compra directa)' },
+  { id: '🚗 Transporte',    label: '🚗 Transporte (taxi, moto, domicilio)' },
+  { id: '🧹 Aseo',          label: '🧹 Aseo y limpieza' },
+  { id: '💡 Servicios',     label: '💡 Servicios (luz, agua, internet)' },
+  { id: '🍽 Alimentación',  label: '🍽 Alimentación del equipo' },
+  { id: '🔧 Mantenimiento', label: '🔧 Mantenimiento y reparaciones' },
+  { id: '📱 Comunicaciones',label: '📱 Comunicaciones / recargas' },
+  { id: '💼 Administrativo',label: '💼 Gastos administrativos' },
+  { id: '🏷 Otro',          label: '🏷 Otro' },
+];
+
 function ExpenseSheet({ saveCashMovement, busy }) {
   const [type, setType] = useState('expense');
+  const [method, setMethod] = useState('cash');
+  const [cat, setCat] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const isRetiro = type === 'withdrawal';
   return (
     <>
-      <h3>Gasto o retiro de caja</h3>
+      <h3>Gasto o retiro</h3>
       <div className="field"><label>Tipo</label>
         <div className="chip-row" style={{ marginBottom: 2 }}>
           <button className={'chip' + (type === 'expense' ? ' on' : '')} onClick={() => setType('expense')}>💸 Gasto</button>
           <button className={'chip' + (type === 'withdrawal' ? ' on' : '')} onClick={() => setType('withdrawal')}>🏧 Retiro</button>
         </div>
       </div>
+      {!isRetiro && (
+        <div className="field"><label>Categoría</label>
+          <select value={cat} onChange={e => setCat(e.target.value)} style={{ width: '100%' }}>
+            {EXPENSE_CATS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </div>
+      )}
+      <div className="field"><label>Sale de</label>
+        <div className="chip-row" style={{ marginBottom: 2 }}>
+          <button className={'chip' + (method === 'cash' ? ' on' : '')} onClick={() => setMethod('cash')}>💵 Caja efectivo</button>
+          <button className={'chip' + (method === 'transfer' ? ' on' : '')} onClick={() => setMethod('transfer')}>🏦 Banco tienda</button>
+        </div>
+      </div>
       <div className="field"><label>Monto (pesos)</label>
         <input type="number" inputMode="numeric" placeholder="ej. 50000" value={amount} onChange={e => setAmount(e.target.value)} /></div>
-      <div className="field"><label>¿Para qué? (obligatorio)</label>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="ej. compra de mercancía" /></div>
+      <div className="field"><label>Detalle {isRetiro ? '(obligatorio)' : '(opcional)'}</label>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder={isRetiro ? 'ej. retiro para pago nómina' : 'ej. bolsas negras, soga x2'} /></div>
       <button className="btn-primary" disabled={busy} onClick={() => {
         const v = parseInt(amount, 10);
-        if (!v || v <= 0 || !note.trim()) return;
-        saveCashMovement(type, v, note.trim());
+        if (!v || v <= 0) return;
+        if (isRetiro && !note.trim()) return;
+        const fullNote = (!isRetiro && cat)
+          ? (note.trim() ? `${cat} · ${note.trim()}` : cat)
+          : note.trim();
+        if (!fullNote) return;
+        saveCashMovement(type, v, fullNote, method);
       }}>Guardar movimiento</button>
-      <div className="hint">Sale del efectivo esperado en caja</div>
+      <div className="hint">{method === 'cash' ? 'Sale del efectivo esperado en caja' : 'Sale del saldo del banco tienda'}</div>
     </>
   );
 }
